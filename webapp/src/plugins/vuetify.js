@@ -7,15 +7,13 @@ export default createVuetify({
     themes: {
       light: {
         colors: {
-          background: "#f5efe2",
-          surface: "#faf6ec",
-          primary: "#c98a3b",
-          secondary: "#2b1d0f",
-          accent: "#a06a26",
-          error: "#8b3a2b",
-          info: "#3a5a7a",
-          success: "#5a7a3a",
-          warning: "#a8742b",
+          primary: "#ce9160",
+          secondary: "#424242",
+          accent: "#82B1FF",
+          error: "#982f2f",
+          info: "#2f6398",
+          success: "#2f9852",
+          warning: "#987e2f",
         },
       },
     },
@@ -25,7 +23,7 @@ export default createVuetify({
       variant: "flat",
     },
     VCard: {
-      elevation: 0,
+      elevation: 2,
     },
   },
 });
