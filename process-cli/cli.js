@@ -941,10 +941,13 @@ program
       setIfNotDefined("saturation", presetParams.saturation);
       setIfNotDefined("toneMode", presetParams.toneMode);
       setIfNotDefined("contrast", presetParams.contrast);
-      setIfNotDefined("strength", presetParams.strength);
-      setIfNotDefined("shadowBoost", presetParams.shadowBoost);
-      setIfNotDefined("highlightCompress", presetParams.highlightCompress);
-      setIfNotDefined("midpoint", presetParams.midpoint);
+      // CLI declares --scurve-strength etc., which Commander maps to
+      // options.scurveStrength. Write preset/default fallbacks into the same
+      // property so there's one source of truth per scurve parameter.
+      setIfNotDefined("scurveStrength", presetParams.strength);
+      setIfNotDefined("scurveShadow", presetParams.shadowBoost);
+      setIfNotDefined("scurveHighlight", presetParams.highlightCompress);
+      setIfNotDefined("scurveMidpoint", presetParams.midpoint);
       setIfNotDefined("colorMethod", presetParams.colorMethod);
       setIfNotDefined("ditherAlgorithm", presetParams.ditherAlgorithm);
       setIfNotDefined(
@@ -958,10 +961,10 @@ program
       setIfNotDefined("saturation", libraryDefaults.saturation);
       setIfNotDefined("toneMode", libraryDefaults.toneMode);
       setIfNotDefined("contrast", libraryDefaults.contrast);
-      setIfNotDefined("strength", libraryDefaults.strength);
-      setIfNotDefined("shadowBoost", libraryDefaults.shadowBoost);
-      setIfNotDefined("highlightCompress", libraryDefaults.highlightCompress);
-      setIfNotDefined("midpoint", libraryDefaults.midpoint);
+      setIfNotDefined("scurveStrength", libraryDefaults.strength);
+      setIfNotDefined("scurveShadow", libraryDefaults.shadowBoost);
+      setIfNotDefined("scurveHighlight", libraryDefaults.highlightCompress);
+      setIfNotDefined("scurveMidpoint", libraryDefaults.midpoint);
       setIfNotDefined("colorMethod", libraryDefaults.colorMethod);
       setIfNotDefined("ditherAlgorithm", libraryDefaults.ditherAlgorithm);
       setIfNotDefined(
@@ -1019,20 +1022,23 @@ program
               options.contrast ??
               presetParams?.contrast ??
               DEFAULT_PARAMS.contrast,
+            // --scurve-* CLI flags land in options.scurve*; setIfNotDefined
+            // above filled in preset/library defaults on the same property.
+            // The output keys (strength etc.) match what the library reads.
             strength:
-              options.strength ??
+              options.scurveStrength ??
               presetParams?.strength ??
               DEFAULT_PARAMS.strength,
             shadowBoost:
-              options.shadowBoost ??
+              options.scurveShadow ??
               presetParams?.shadowBoost ??
               DEFAULT_PARAMS.shadowBoost,
             highlightCompress:
-              options.highlightCompress ??
+              options.scurveHighlight ??
               presetParams?.highlightCompress ??
               DEFAULT_PARAMS.highlightCompress,
             midpoint:
-              options.midpoint ??
+              options.scurveMidpoint ??
               presetParams?.midpoint ??
               DEFAULT_PARAMS.midpoint,
             colorMethod:
