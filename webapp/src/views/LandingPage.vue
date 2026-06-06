@@ -1859,16 +1859,12 @@ em.wonk {
 </style>
 
 <style>
-/* Global resets so embedded Vuetify/web components inherit the warm palette */
-html,
-body {
-  background: #f5efe2;
-}
+/* Global resets. The landing page paints its own warm background via `.page`
+   (min-height:100vh), so we must NOT force a body background or make
+   .v-application transparent here — doing so leaks into the device WebUI and
+   breaks the dark theme (the light body shows through). */
 body {
   margin: 0;
-}
-.v-application {
-  background: transparent !important;
 }
 
 esp-web-install-button button[slot="activate"] {

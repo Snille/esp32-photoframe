@@ -5,6 +5,7 @@
 #include <zlib.h>
 
 #include "board_hal.h"
+#include "display_manager.h"
 #include "epaper.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -161,11 +162,22 @@ esp_err_t splash_screen_display(void)
 
     ESP_LOGI(TAG, "Loading splash screen (%dx%d)", width, height);
 
-    // Allocate buffer for the e-paper image
-    uint8_t *epd_buffer = heap_caps_malloc(buf_size, MALLOC_CAP_SPIRAM);
-    if (!epd_buffer) {
-        ESP_LOGE(TAG, "Failed to allocate display buffer");
-        return ESP_ERR_NO_MEM;
+    // Reuse display_manager's pre-allocated buffer to avoid a second large allocation
+    // (important on boards without PSRAM where heap is tight)
+    uint32_t dm_buf_size = 0;
+    uint8_t *epd_buffer = display_manager_get_epd_buffer(&dm_buf_size);
+    bool owns_buffer = false;
+    if (!epd_buffer || dm_buf_size < (uint32_t) buf_size) {
+        // Fallback: allocate own buffer (try PSRAM then SRAM)
+        epd_buffer = heap_caps_malloc(buf_size, MALLOC_CAP_SPIRAM);
+        if (!epd_buffer) {
+            epd_buffer = heap_caps_malloc(buf_size, MALLOC_CAP_8BIT);
+        }
+        if (!epd_buffer) {
+            ESP_LOGE(TAG, "Failed to allocate display buffer");
+            return ESP_ERR_NO_MEM;
+        }
+        owns_buffer = true;
     }
 
     // Fill with white initially
@@ -178,7 +190,7 @@ esp_err_t splash_screen_display(void)
     esp_err_t ret = decompress_gzip(splash_epdgz_start, epdgz_size, epd_buffer, buf_size);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to decompress splash EPDGZ");
-        heap_caps_free(epd_buffer);
+        if (owns_buffer) heap_caps_free(epd_buffer);
         return ret;
     }
 
@@ -209,7 +221,7 @@ esp_err_t splash_screen_display(void)
     ret = esp_qrcode_generate(&qr_cfg, wifi_qr_data);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to generate WiFi QR code");
-        heap_caps_free(epd_buffer);
+        if (owns_buffer) heap_caps_free(epd_buffer);
         return ret;
     }
 
@@ -217,7 +229,7 @@ esp_err_t splash_screen_display(void)
     ESP_LOGI(TAG, "Displaying splash screen");
     epaper_display(epd_buffer);
 
-    heap_caps_free(epd_buffer);
+    if (owns_buffer) heap_caps_free(epd_buffer);
     ESP_LOGI(TAG, "Splash screen displayed successfully");
     return ESP_OK;
 }
@@ -230,10 +242,20 @@ esp_err_t splash_screen_display_setup_complete(const char *hostname)
 
     ESP_LOGI(TAG, "Showing setup complete screen (%dx%d)", width, height);
 
-    uint8_t *epd_buffer = heap_caps_malloc(buf_size, MALLOC_CAP_SPIRAM);
-    if (!epd_buffer) {
-        ESP_LOGE(TAG, "Failed to allocate display buffer");
-        return ESP_ERR_NO_MEM;
+    // Reuse display_manager's pre-allocated buffer (avoids second large allocation on SRAM-only boards)
+    uint32_t dm_buf_size = 0;
+    uint8_t *epd_buffer = display_manager_get_epd_buffer(&dm_buf_size);
+    bool owns_buffer = false;
+    if (!epd_buffer || dm_buf_size < (uint32_t) buf_size) {
+        epd_buffer = heap_caps_malloc(buf_size, MALLOC_CAP_SPIRAM);
+        if (!epd_buffer) {
+            epd_buffer = heap_caps_malloc(buf_size, MALLOC_CAP_8BIT);
+        }
+        if (!epd_buffer) {
+            ESP_LOGE(TAG, "Failed to allocate display buffer");
+            return ESP_ERR_NO_MEM;
+        }
+        owns_buffer = true;
     }
 
     memset(epd_buffer, 0x11, buf_size);
@@ -245,7 +267,7 @@ esp_err_t splash_screen_display_setup_complete(const char *hostname)
     esp_err_t ret = decompress_gzip(setup_complete_epdgz_start, epdgz_size, epd_buffer, buf_size);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to decompress setup_complete EPDGZ");
-        heap_caps_free(epd_buffer);
+        if (owns_buffer) heap_caps_free(epd_buffer);
         return ret;
     }
 
@@ -272,14 +294,14 @@ esp_err_t splash_screen_display_setup_complete(const char *hostname)
     ret = esp_qrcode_generate(&qr_cfg, url);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to generate web UI QR code");
-        heap_caps_free(epd_buffer);
+        if (owns_buffer) heap_caps_free(epd_buffer);
         return ret;
     }
 
     ESP_LOGI(TAG, "Displaying setup complete screen");
     epaper_display(epd_buffer);
 
-    heap_caps_free(epd_buffer);
+    if (owns_buffer) heap_caps_free(epd_buffer);
     ESP_LOGI(TAG, "Setup complete screen displayed successfully");
     return ESP_OK;
 }

@@ -32,7 +32,7 @@ onMounted(async () => {
   <v-app>
     <AppHeader />
 
-    <v-main class="bg-grey-lighten-4">
+    <v-main>
       <v-container class="py-6" style="max-width: 1200px">
         <v-alert
           v-if="
@@ -51,11 +51,18 @@ onMounted(async () => {
           v-if="appStore.systemInfo.sdcard_inserted || appStore.systemInfo.has_flash_storage"
         />
 
-        <ImageUpload class="mt-6" />
+        <!-- Upload needs persistent storage; hidden on SRAM-only boards where it
+             would exhaust RAM (manage images from the server instead). -->
+        <ImageUpload
+          v-if="appStore.systemInfo.sdcard_inserted || appStore.systemInfo.has_flash_storage"
+          class="mt-6"
+        />
 
         <SettingsPanel class="mt-6" />
 
-        <OtaUpdate class="mt-6" />
+        <!-- OTA needs two app partitions; hidden when the board's flash layout
+             can't host an update slot (e.g. single-factory 4MB boards). -->
+        <OtaUpdate v-if="appStore.systemInfo.ota_supported" class="mt-6" />
       </v-container>
     </v-main>
 

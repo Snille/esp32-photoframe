@@ -1,0 +1,6 @@
+# Partition table for DFRobot FireBeetle 2 ESP32-E (4MB flash)
+# No OTA - single factory app (firmware + webapp too large for two OTA slots on 4MB)
+# Name,   Type, SubType, Offset,   Size,     Flags
+nvs,      data, nvs,     0x9000,   0x6000,
+phy_init, data, phy,     0xf000,   0x1000,
+factory,  app,  factory, 0x10000,  0x3F0000,

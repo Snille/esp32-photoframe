@@ -1,0 +1,34 @@
+# DFRobot FireBeetle 2 ESP32-E with Waveshare 4inch e-Paper HAT+ E
+CONFIG_BOARD_DRIVER_DFROBOT_FIREBEETLE_ESP32E=y
+
+# Target chip: classic ESP32 (not S3)
+# NOTE: Before first build, run: idf.py set-target esp32
+CONFIG_IDF_TARGET="esp32"
+
+# Flash: FireBeetle ESP32-E (WROOM-32E) has 4MB flash
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
+
+# No PSRAM on standard WROOM-32E module
+# The 120KB image buffer (600x400/2) fits in internal SRAM
+CONFIG_SPIRAM=n
+
+# No internal flash storage partition (4MB flash is tight with app + OTA)
+# Image processing uses RAM-based MemFS instead
+CONFIG_USE_INTERNAL_FLASH_STORAGE=n
+
+# Custom partition table: single factory partition (no OTA - binary too large for two OTA slots on 4MB)
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="boards/partitions.dfrobot_firebeetle_esp32e.csv"
+
+# Disable OTA (no OTA slots in partition table)
+CONFIG_APP_UPDATE_PARTITION_PREFER_NVS_FACTORY=n
+
+# Memory optimization for HTTPS on SRAM-only boards
+# Dynamic TLS buffers: only allocate during active TLS connections instead of statically
+# This frees ~20KB SRAM when no TLS connection is in use
+CONFIG_MBEDTLS_DYNAMIC_BUFFER=y
+# Reduce TLS output buffer (JPEG images come in chunks, 4KB output is enough)
+CONFIG_MBEDTLS_SSL_OUT_CONTENT_LEN=4096
+# Reduce TLS input buffer - 8KB saves 8KB vs default 16KB while still handling most TLS records
+CONFIG_MBEDTLS_SSL_IN_CONTENT_LEN=8192

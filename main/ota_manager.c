@@ -426,6 +426,16 @@ static void ota_update_task(void *pvParameter)
     vTaskDelete(NULL);
 }
 
+// True only when a second app partition exists to receive an update. On
+// single-factory-partition boards (e.g. FireBeetle 2 ESP32-E — 4MB flash, a
+// 2.6MB app leaves no room for two OTA slots) there is nowhere to write an
+// update, so OTA is impossible. Skipping it avoids a wasted WiFi/TLS round-trip
+// (and the battery it costs) on every wake.
+static bool ota_is_supported(void)
+{
+    return esp_ota_get_next_update_partition(NULL) != NULL;
+}
+
 esp_err_t ota_manager_init(void)
 {
     ESP_LOGI(TAG, "Initializing OTA manager");
@@ -461,6 +471,13 @@ esp_err_t ota_manager_init(void)
         }
     }
 
+    // Auto-disable OTA on boards without an update partition. No periodic
+    // check is registered, so the device never wakes the radio to poll.
+    if (!ota_is_supported()) {
+        ESP_LOGI(TAG, "No OTA update partition — OTA disabled on this board");
+        return ESP_OK;
+    }
+
     // Register OTA check as a periodic task (24 hours)
     esp_err_t err = periodic_tasks_register(OTA_CHECK_TASK_NAME, ota_check_periodic_callback,
                                             OTA_CHECK_INTERVAL_SECONDS);
@@ -474,6 +491,14 @@ esp_err_t ota_manager_init(void)
 
 esp_err_t ota_check_for_update(bool *update_available_out, int timeout)
 {
+    // No update partition → nothing to check; avoids the boot-time TLS attempt.
+    if (!ota_is_supported()) {
+        if (update_available_out) {
+            *update_available_out = false;
+        }
+        return ESP_OK;
+    }
+
     if (ota_status.state == OTA_STATE_CHECKING || ota_status.state == OTA_STATE_DOWNLOADING ||
         ota_status.state == OTA_STATE_INSTALLING) {
         return ESP_ERR_INVALID_STATE;

@@ -109,6 +109,10 @@ typedef enum {
 #define NVS_OPENAI_API_KEY_KEY "openai_key"
 #define NVS_GOOGLE_API_KEY_KEY "google_key"
 
+// AI generation prompt (sent to the server as X-AI-Prompt on ai_generation pulls)
+#define AI_PROMPT_MAX_LEN 512
+#define NVS_AI_PROMPT_KEY "ai_prompt"
+
 // OTA Configuration
 #define GITHUB_API_URL "https://api.github.com/repos/aitjcize/esp32-photoframe/releases/latest"
 #define OTA_CHECK_INTERVAL_MS (24 * 60 * 60 * 1000)  // 24 hours

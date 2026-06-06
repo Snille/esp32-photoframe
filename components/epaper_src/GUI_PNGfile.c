@@ -39,7 +39,8 @@ UBYTE GUI_ReadPng_RGB_6Color(const char *path, UWORD Xstart, UWORD Ystart)
     // Verify PNG signature
     uint8_t sig[8];
     if (fread(sig, 1, 8, fp) != 8 || png_sig_cmp(sig, 0, 8) != 0) {
-        ESP_LOGE(TAG, "Not a valid PNG file");
+        ESP_LOGE(TAG, "Not a valid PNG file (sig: %02x %02x %02x %02x %02x %02x %02x %02x)",
+                 sig[0], sig[1], sig[2], sig[3], sig[4], sig[5], sig[6], sig[7]);
         fclose(fp);
         return 1;
     }

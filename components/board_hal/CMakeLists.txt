@@ -3,6 +3,7 @@ set(SRCS "")
 set(PRIV_REQS
     epaper_driver_ed2208_gca
     epaper_driver_ed2208_nca
+    epaper_driver_ws4in_e6
     esp_driver_i2c
     esp_driver_spi
     pmic_driver_axp2101
@@ -21,6 +22,8 @@ elseif(CONFIG_BOARD_DRIVER_SEEEDSTUDIO_XIAO_EE04)
     list(APPEND SRCS "src/driver_seeedstudio_xiao_ee04.c")
 elseif(CONFIG_BOARD_DRIVER_SEEEDSTUDIO_RETERMINAL_E1002)
     list(APPEND SRCS "src/driver_seeedstudio_reterminal_e1002.c")
+elseif(CONFIG_BOARD_DRIVER_DFROBOT_FIREBEETLE_ESP32E)
+    list(APPEND SRCS "src/driver_dfrobot_firebeetle_esp32e.c")
 endif()
 
 idf_component_register(

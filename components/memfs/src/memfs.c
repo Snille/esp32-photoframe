@@ -114,6 +114,9 @@ static ssize_t memfs_write_vfs(void *ctx, int fd, const void *data, size_t size)
         size_t new_capacity = (offset + size + 4095) & ~4095;
         uint8_t *new_data = heap_caps_realloc(file->data, new_capacity, MALLOC_CAP_SPIRAM);
         if (!new_data) {
+            new_data = heap_caps_realloc(file->data, new_capacity, MALLOC_CAP_8BIT);
+        }
+        if (!new_data) {
             errno = ENOMEM;
             return -1;
         }

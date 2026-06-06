@@ -7,6 +7,13 @@ import ProcessingControls from "./ProcessingControls.vue";
 const settingsStore = useSettingsStore();
 const appStore = useAppStore();
 
+// Boards with persistent storage support in-browser upload (and thus the
+// client-side AI keys). SRAM-only boards hide those fields.
+const hasUploadSupport = computed(
+  () =>
+    appStore.systemInfo.sdcard_inserted || appStore.systemInfo.has_flash_storage
+);
+
 // Device time state
 const deviceTime = ref("");
 const syncingTime = ref(false);
@@ -153,6 +160,8 @@ const saveError = ref(false);
 
 const showFactoryResetDialog = ref(false);
 const resetting = ref(false);
+const showFlashModeDialog = ref(false);
+const enteringFlashMode = ref(false);
 const showImportDialog = ref(false);
 const importData = ref(null);
 const importFileName = ref("");
@@ -316,6 +325,21 @@ async function performFactoryReset() {
     saveMessage.value = result.message;
     setTimeout(() => (saveError.value = false), 5000);
   }
+}
+
+async function enterFlashMode() {
+  enteringFlashMode.value = true;
+  const result = await settingsStore.enterDownloadMode();
+  enteringFlashMode.value = false;
+  showFlashModeDialog.value = false;
+
+  saveSuccess.value = result.success;
+  saveError.value = !result.success;
+  saveMessage.value = result.message;
+  setTimeout(() => {
+    saveSuccess.value = false;
+    saveError.value = false;
+  }, 6000);
 }
 </script>
 
@@ -715,44 +739,65 @@ async function performFactoryReset() {
           <!-- AI Generation Tab -->
           <v-tabs-window-item value="ai">
             <v-alert type="info" variant="tonal" density="compact" class="mt-2 mb-4">
-              API keys are used for client-side AI image generation when uploading images.
+              Prompt is used for server-side AI generation (e.g. ComfyUI) when the
+              image source is set to AI Generation.<template v-if="hasUploadSupport">
+                API keys below are only for client-side generation when uploading
+                images.</template>
             </v-alert>
 
-            <v-text-field
-              v-model="settingsStore.deviceSettings.aiCredentials.openaiApiKey"
-              label="OpenAI API Key"
+            <v-textarea
+              v-model="settingsStore.deviceSettings.aiPrompt"
+              label="AI Prompt"
               variant="outlined"
-              type="password"
-              hint="sk-..."
+              rows="3"
+              auto-grow
+              placeholder="A serene Swedish summer landscape at golden hour..."
+              hint="Sent to the server for AI Generation. Overrides the prompt stored on the server for this device."
               persistent-hint
-              class="mb-2"
+              class="mb-4"
             />
-            <div class="text-caption text-grey ml-2 mb-4">
-              Get your API key at
-              <a
-                href="https://platform.openai.com/api-keys"
-                target="_blank"
-                class="text-primary text-decoration-none"
-                >platform.openai.com</a
-              >
-            </div>
 
-            <v-text-field
-              v-model="settingsStore.deviceSettings.aiCredentials.googleApiKey"
-              label="Google Gemini API Key"
-              variant="outlined"
-              type="password"
-              class="mb-2"
-            />
-            <div class="text-caption text-grey ml-2 mb-4">
-              Get your API key at
-              <a
-                href="https://aistudio.google.com/app/apikey"
-                target="_blank"
-                class="text-primary text-decoration-none"
-                >aistudio.google.com</a
-              >
-            </div>
+            <!-- Client-side AI keys are only used by the in-browser upload path,
+                 which needs persistent storage; hidden on SRAM-only boards. -->
+            <template v-if="hasUploadSupport">
+              <v-divider class="mb-4" />
+
+              <v-text-field
+                v-model="settingsStore.deviceSettings.aiCredentials.openaiApiKey"
+                label="OpenAI API Key"
+                variant="outlined"
+                type="password"
+                hint="sk-..."
+                persistent-hint
+                class="mb-2"
+              />
+              <div class="text-caption text-grey ml-2 mb-4">
+                Get your API key at
+                <a
+                  href="https://platform.openai.com/api-keys"
+                  target="_blank"
+                  class="text-primary text-decoration-none"
+                  >platform.openai.com</a
+                >
+              </div>
+
+              <v-text-field
+                v-model="settingsStore.deviceSettings.aiCredentials.googleApiKey"
+                label="Google Gemini API Key"
+                variant="outlined"
+                type="password"
+                class="mb-2"
+              />
+              <div class="text-caption text-grey ml-2 mb-4">
+                Get your API key at
+                <a
+                  href="https://aistudio.google.com/app/apikey"
+                  target="_blank"
+                  class="text-primary text-decoration-none"
+                  >aistudio.google.com</a
+                >
+              </div>
+            </template>
           </v-tabs-window-item>
 
           <!-- Calibration Tab -->
@@ -782,6 +827,25 @@ async function performFactoryReset() {
                 />
               </v-col>
             </v-row>
+
+            <template v-if="appStore.systemInfo.download_mode_supported">
+              <v-divider class="my-6" />
+
+              <div class="text-subtitle-1 mb-4">Firmware Flashing</div>
+              <v-row>
+                <v-col cols="12">
+                  <v-btn variant="outlined" @click="showFlashModeDialog = true">
+                    <v-icon start>mdi-usb-flash-drive</v-icon>
+                    Enter Flash Mode
+                  </v-btn>
+                  <div class="text-caption text-grey mt-2">
+                    Reboots the device into USB flash/download mode so you can
+                    flash new firmware over USB without pressing BOOT/RST. The
+                    device goes offline until you flash it or power-cycle it.
+                  </div>
+                </v-col>
+              </v-row>
+            </template>
 
             <v-divider class="my-6" />
 
@@ -858,6 +922,42 @@ async function performFactoryReset() {
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <!-- Flash Mode Confirmation Dialog -->
+    <v-dialog v-model="showFlashModeDialog" max-width="500">
+      <v-card>
+        <v-card-title>
+          <v-icon icon="mdi-usb-flash-drive" class="mr-2" />
+          Enter Flash Mode
+        </v-card-title>
+        <v-card-text>
+          <div class="text-body-1 mb-3">
+            The device will reboot into USB download mode and go offline. Then,
+            from your computer, run your flash command (esptool) over USB — no
+            BOOT/RST buttons needed.
+          </div>
+          <v-alert type="info" variant="tonal" density="compact">
+            <div class="text-body-2">
+              To cancel without flashing, just power-cycle the device (it boots
+              normally on a full reset).
+            </div>
+          </v-alert>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="showFlashModeDialog = false">Cancel</v-btn>
+          <v-btn
+            color="primary"
+            variant="flat"
+            :loading="enteringFlashMode"
+            @click="enterFlashMode"
+          >
+            Enter Flash Mode
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- Import Config Confirmation Dialog -->
     <v-dialog v-model="showImportDialog" max-width="500">
       <v-card>

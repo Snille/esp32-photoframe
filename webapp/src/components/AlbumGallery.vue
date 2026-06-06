@@ -150,7 +150,7 @@ function getThumbnailUrl(image) {
                 :alt="image.filename"
                 aspect-ratio="1"
                 contain
-                class="cursor-pointer bg-grey-lighten-3"
+                class="cursor-pointer bg-surface-variant"
                 @click="confirmDisplayImage(image)"
               >
                 <template #placeholder>

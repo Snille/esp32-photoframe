@@ -5,6 +5,7 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
+#include <zlib.h>
 
 #include "board_hal.h"
 #include "cJSON.h"
@@ -14,6 +15,7 @@
 #include "config_manager.h"
 #include "display_manager.h"
 #include "esp_app_desc.h"
+#include "esp_crt_bundle.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "esp_mac.h"
@@ -270,6 +272,11 @@ esp_err_t apply_config_from_json(cJSON *root)
         config_manager_set_google_api_key(cJSON_GetStringValue(item));
     }
 
+    item = cJSON_GetObjectItem(root, "ai_prompt");
+    if (item && cJSON_IsString(item)) {
+        config_manager_set_ai_prompt(cJSON_GetStringValue(item));
+    }
+
     // Power
     item = cJSON_GetObjectItem(root, "deep_sleep_enabled");
     if (item && cJSON_IsBool(item)) {
@@ -287,23 +294,92 @@ typedef struct {
     char *thumbnail_url;   // Optional thumbnail URL from X-Thumbnail-URL header
     char *config_payload;  // Optional config JSON from X-Config-Payload header
     char *etag;            // Optional ETag buffer (HTTP_ETAG_MAX_LEN bytes) for 304 caching
+    // Streaming EPDGZ inflate (avoids writing compressed data to MemFS)
+    z_stream inflate_strm;
+    bool inflate_candidate; // true when headers suggest EPDGZ may be streamed
+    bool inflate_checked;   // true after the first body chunk has been inspected
+    bool inflate_active;    // true when streaming inflate is in use
+    bool inflate_failed;    // true if any inflate step failed
+    uint8_t *inflate_out;   // Output buffer (EPD image buffer, pre-allocated)
+    size_t inflate_out_size;    // EPD buffer capacity in bytes
+    size_t inflate_out_written; // Bytes decompressed so far
+    bool raw_epd_active;        // true when streaming uncompressed 4bpp EPD data
+    bool raw_epd_failed;        // true if raw EPD payload exceeds the display buffer
+    size_t raw_epd_written;     // Bytes copied into the EPD buffer
 } download_context_t;
 
-// HTTP event handler to write data to file
+// HTTP event handler to write data to file or stream-decompress EPDGZ
 static esp_err_t http_event_handler(esp_http_client_event_t *evt)
 {
     download_context_t *ctx = (download_context_t *) evt->user_data;
 
     switch (evt->event_id) {
     case HTTP_EVENT_ON_DATA:
-        if (ctx->file) {
-            fwrite(evt->data, 1, evt->data_len, ctx->file);
+        if (ctx->inflate_candidate && !ctx->inflate_checked && !ctx->inflate_active) {
+            ctx->inflate_checked = true;
+
+            if (evt->data_len >= 2 && ((uint8_t *) evt->data)[0] == 0x1F &&
+                ((uint8_t *) evt->data)[1] == 0x8B && ctx->inflate_out &&
+                ctx->inflate_out_size > 0) {
+                memset(&ctx->inflate_strm, 0, sizeof(ctx->inflate_strm));
+                if (inflateInit2(&ctx->inflate_strm, 16 + MAX_WBITS) == Z_OK) {
+                    ctx->inflate_active = true;
+                    ctx->inflate_failed = false;
+                    ctx->inflate_out_written = 0;
+                    ESP_LOGI("http_dl", "Streaming EPDGZ inflate initialized");
+                } else {
+                    ESP_LOGE("http_dl", "inflateInit2 failed, falling back to file");
+                    ctx->inflate_failed = true;
+                }
+            } else {
+                ESP_LOGW("http_dl",
+                         "application/octet-stream payload is not gzip; saving for format detection");
+            }
+        }
+
+        if (ctx->raw_epd_active && !ctx->raw_epd_failed) {
+            if (!ctx->inflate_out ||
+                ctx->raw_epd_written + evt->data_len > ctx->inflate_out_size) {
+                ESP_LOGE("http_dl", "raw EPD payload too large: %zu + %d > %zu",
+                         ctx->raw_epd_written, evt->data_len, ctx->inflate_out_size);
+                ctx->raw_epd_failed = true;
+            } else {
+                memcpy(ctx->inflate_out + ctx->raw_epd_written, evt->data, evt->data_len);
+                ctx->raw_epd_written += evt->data_len;
+            }
             ctx->total_read += evt->data_len;
+        } else if (ctx->inflate_active && !ctx->inflate_failed) {
+            // Stream-decompress EPDGZ directly into EPD buffer
+            ctx->inflate_strm.avail_in = (uInt)evt->data_len;
+            ctx->inflate_strm.next_in  = (Bytef *)evt->data;
+            ctx->inflate_strm.avail_out = (uInt)(ctx->inflate_out_size - ctx->inflate_out_written);
+            ctx->inflate_strm.next_out  = ctx->inflate_out + ctx->inflate_out_written;
+            int ret = inflate(&ctx->inflate_strm, Z_NO_FLUSH);
+            if (ret != Z_OK && ret != Z_STREAM_END && ret != Z_BUF_ERROR) {
+                ESP_LOGE("http_dl", "inflate error: %d", ret);
+                ctx->inflate_failed = true;
+            } else {
+                ctx->inflate_out_written = ctx->inflate_out_size - ctx->inflate_strm.avail_out;
+            }
+            ctx->total_read += evt->data_len;
+        } else if (ctx->file) {
+            size_t written = fwrite(evt->data, 1, evt->data_len, ctx->file);
+            if (written != (size_t) evt->data_len) {
+                ESP_LOGE("http_dl", "file write incomplete: %zu/%d", written, evt->data_len);
+            }
+            ctx->total_read += written;
         }
         break;
     case HTTP_EVENT_ON_HEADER:
         if (strcasecmp(evt->header_key, "Content-Type") == 0) {
             snprintf(ctx->content_type, 128, "%s", evt->header_value);
+            // EPDGZ is usually served as application/octet-stream. Treat that as
+            // a hint only; the first body bytes must still be gzip magic.
+            ctx->inflate_candidate =
+                strcasecmp(evt->header_value, "application/octet-stream") == 0 ||
+                strcasecmp(evt->header_value, "application/x-epdgz") == 0;
+            ctx->raw_epd_active =
+                strcasecmp(evt->header_value, "application/x-epd-raw") == 0;
         } else if (strcasecmp(evt->header_key, "X-Thumbnail-URL") == 0) {
             // Capture thumbnail URL if provided by server (case-insensitive)
             if (ctx->thumbnail_url && strlen(evt->header_value) > 0) {
@@ -357,6 +433,12 @@ esp_err_t fetch_and_save_image_from_url(const char *url, char *saved_image_path,
     char *config_payload_buffer = NULL;
     char *etag_buffer = NULL;
 
+    // Inflate result captured from inside the retry loop
+    bool inflate_streamed = false;
+    size_t inflate_written = 0;
+    bool raw_epd_streamed = false;
+    size_t raw_epd_written = 0;
+
     // Allocate buffers once before retry loop
     thumbnail_url_buffer = calloc(512, 1);
     content_type = calloc(128, 1);
@@ -390,12 +472,27 @@ esp_err_t fetch_and_save_image_from_url(const char *url, char *saved_image_path,
         memset(config_payload_buffer, 0, 2048);
         memset(etag_buffer, 0, HTTP_ETAG_MAX_LEN);
 
+        // Pre-wire the EPD buffer as the streaming inflate output target.
+        // The event handler will start streaming inflate on Content-Type: application/octet-stream.
+        uint32_t epd_buf_size = 0;
+        uint8_t *epd_buf = display_manager_get_epd_buffer(&epd_buf_size);
+
         download_context_t ctx = {.file = file,
                                   .total_read = 0,
                                   .content_type = content_type,
                                   .thumbnail_url = thumbnail_url_buffer,
                                   .config_payload = config_payload_buffer,
-                                  .etag = etag_buffer};
+                                  .etag = etag_buffer,
+                                  .inflate_candidate = false,
+                                  .inflate_checked = false,
+                                  .inflate_active = false,
+                                  .inflate_failed = false,
+                                  .inflate_out = epd_buf,
+                                  .inflate_out_size = (size_t)epd_buf_size,
+                                  .inflate_out_written = 0,
+                                  .raw_epd_active = false,
+                                  .raw_epd_failed = false,
+                                  .raw_epd_written = 0};
 
         // Use custom CA cert for HTTPS if configured
         size_t pinned_cert_len = 0;
@@ -409,8 +506,9 @@ esp_err_t fetch_and_save_image_from_url(const char *url, char *saved_image_path,
             .max_redirection_count = 5,
             .user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             .buffer_size_tx = 2048,
-            .cert_der = (const char *) pinned_cert,
+            .cert_pem = (const char *) pinned_cert,
             .cert_len = pinned_cert_len,
+            .crt_bundle_attach = pinned_cert ? NULL : esp_crt_bundle_attach,
         };
 
         esp_http_client_handle_t client = esp_http_client_init(&config);
@@ -453,14 +551,45 @@ esp_err_t fetch_and_save_image_from_url(const char *url, char *saved_image_path,
         snprintf(height_str, sizeof(height_str), "%d", BOARD_HAL_DISPLAY_HEIGHT);
         esp_http_client_set_header(client, "X-Display-Width", width_str);
         esp_http_client_set_header(client, "X-Display-Height", height_str);
+
+        // Send the locally-configured AI prompt so the server can use it for the
+        // ai_generation source (overrides the server-stored prompt). HTTP header
+        // values can't contain CR/LF, so collapse any newlines into spaces.
+        const char *ai_prompt = config_manager_get_ai_prompt();
+        if (ai_prompt && ai_prompt[0] != '\0') {
+            char prompt_hdr[AI_PROMPT_MAX_LEN];
+            size_t pi = 0;
+            for (size_t i = 0; ai_prompt[i] != '\0' && pi < sizeof(prompt_hdr) - 1; i++) {
+                char ch = ai_prompt[i];
+                prompt_hdr[pi++] = (ch == '\r' || ch == '\n') ? ' ' : ch;
+            }
+            prompt_hdr[pi] = '\0';
+            esp_http_client_set_header(client, "X-AI-Prompt", prompt_hdr);
+        }
         esp_http_client_set_header(
             client, "X-Display-Orientation",
             config_manager_get_display_orientation() == DISPLAY_ORIENTATION_LANDSCAPE ? "landscape"
                                                                                       : "portrait");
 
-        // Add firmware version header
-        const esp_app_desc_t *app_desc = esp_app_get_description();
-        esp_http_client_set_header(client, "X-Firmware-Version", app_desc->version);
+        // SRAM-only boards request uncompressed display-ready EPD bytes to avoid
+        // zlib/libpng allocations after the display buffer has been reserved.
+        if (!storage_has_persistent_storage()) {
+#ifdef FIRMWARE_VERSION
+            esp_http_client_set_header(client, "X-Firmware-Version", FIRMWARE_VERSION);
+#else
+            const esp_app_desc_t *app_desc = esp_app_get_description();
+            esp_http_client_set_header(client, "X-Firmware-Version", app_desc->version);
+#endif
+            esp_http_client_set_header(client, "X-EPD-Raw", "1");
+        } else {
+            // Add firmware version header (use build-time override if set, else app_desc)
+#ifdef FIRMWARE_VERSION
+            esp_http_client_set_header(client, "X-Firmware-Version", FIRMWARE_VERSION);
+#else
+            const esp_app_desc_t *app_desc = esp_app_get_description();
+            esp_http_client_set_header(client, "X-Firmware-Version", app_desc->version);
+#endif
+        }
 
         // Add If-None-Match with stored ETag to enable 304 Not Modified responses.
         // Server may return an opaque ETag header on the previous 200; we echo it
@@ -509,6 +638,20 @@ esp_err_t fetch_and_save_image_from_url(const char *url, char *saved_image_path,
         content_length = esp_http_client_get_content_length(client);
         total_downloaded = ctx.total_read;
         content_type = ctx.content_type;
+
+        // Finish inflate stream if active, capture result
+        if (ctx.inflate_active) {
+            inflateEnd(&ctx.inflate_strm);
+            if (!ctx.inflate_failed && ctx.inflate_out_written > 0) {
+                inflate_streamed = true;
+                inflate_written = ctx.inflate_out_written;
+            }
+        }
+        if (ctx.raw_epd_active && !ctx.raw_epd_failed &&
+            ctx.raw_epd_written == ctx.inflate_out_size) {
+            raw_epd_streamed = true;
+            raw_epd_written = ctx.raw_epd_written;
+        }
 
         fclose(file);
         esp_http_client_cleanup(client);
@@ -584,6 +727,44 @@ esp_err_t fetch_and_save_image_from_url(const char *url, char *saved_image_path,
     config_manager_set_image_etag(etag_buffer);
     free(etag_buffer);
 
+    // --- Raw EPD streaming path ---
+    // The server can send uncompressed 4bpp panel bytes for SRAM-only boards.
+    // Those bytes are copied directly into the display buffer while downloading.
+    if (raw_epd_streamed) {
+        ESP_LOGI(TAG, "Raw EPD streamed into EPD buffer (%zu bytes), displaying",
+                 raw_epd_written);
+        free(content_type);
+        free(thumbnail_url_buffer);
+        free(config_payload_buffer);
+        unlink(temp_upload_path);
+        display_manager_refresh_from_paint_buffer();
+        if (saved_image_path && path_size > 0) {
+            saved_image_path[0] = '\0';
+        }
+        utils_set_last_fetch_error(NULL);
+        return ESP_OK;
+    }
+
+    // --- EPDGZ streaming path ---
+    // If we successfully stream-decompressed EPDGZ directly into the EPD buffer,
+    // we can display immediately without any file I/O or extra allocations.
+    if (inflate_streamed) {
+        ESP_LOGI(TAG, "EPDGZ streamed into EPD buffer (%zu bytes uncompressed), displaying",
+                 inflate_written);
+        free(content_type);
+        // Thumbnail and config payload still useful even for EPDGZ
+        // (thumbnail was downloaded separately after this point - but for streaming we skip it)
+        free(thumbnail_url_buffer);
+        free(config_payload_buffer);
+        unlink(temp_upload_path);  // Remove the (empty) temp file
+        display_manager_refresh_from_paint_buffer();
+        if (saved_image_path && path_size > 0) {
+            saved_image_path[0] = '\0';  // Sentinel: display already handled
+        }
+        utils_set_last_fetch_error(NULL);
+        return ESP_OK;
+    }
+
     // Detect format regardless of Content-Type (which might be unreliable)
     image_format_t image_format = image_processor_detect_format(temp_upload_path);
     if (image_format == IMAGE_FORMAT_UNKNOWN) {
@@ -626,6 +807,7 @@ esp_err_t fetch_and_save_image_from_url(const char *url, char *saved_image_path,
                 .user_data = &thumb_ctx,
                 .max_redirection_count = 5,
                 .user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                .crt_bundle_attach = esp_crt_bundle_attach,
             };
 
             esp_http_client_handle_t thumb_client = esp_http_client_init(&thumb_config);
@@ -723,9 +905,14 @@ esp_err_t fetch_and_save_image_from_url(const char *url, char *saved_image_path,
         final_path = temp_bmp_path;
     } else if (image_format == IMAGE_FORMAT_PNG || image_format == IMAGE_FORMAT_JPG) {
         bool needs_processing = true;
-        if (image_format == IMAGE_FORMAT_PNG && image_processor_is_processed(temp_upload_path)) {
-            needs_processing = false;
-            ESP_LOGI(TAG, "Image already processed, skipping processing");
+        if (image_format == IMAGE_FORMAT_PNG) {
+            if (!storage_has_persistent_storage()) {
+                needs_processing = false;
+                ESP_LOGI(TAG, "PNG on RAM-only board, displaying without reprocessing");
+            } else if (image_processor_is_processed(temp_upload_path)) {
+                needs_processing = false;
+                ESP_LOGI(TAG, "Image already processed, skipping processing");
+            }
         }
 
         if (!needs_processing) {
@@ -949,6 +1136,9 @@ esp_err_t trigger_image_rotation(void)
                 // Keep the existing eInk image — do not refresh, do not fall
                 // back to SD rotation.
                 ESP_LOGI(TAG, "Image unchanged on server, skipping display refresh");
+            } else if (saved_bmp_path[0] == '\0') {
+                // Empty path = streamed display data was already rendered inline.
+                ESP_LOGI(TAG, "Streaming display complete");
             } else {
                 ESP_LOGI(TAG, "Successfully downloaded and saved image, displaying...");
                 display_manager_show_image(saved_bmp_path);

@@ -151,8 +151,14 @@ static void button_task(void *arg)
                 uint32_t duration = (xTaskGetTickCount() - boot_press_time) * portTICK_PERIOD_MS;
 
                 if (duration > 50 && duration < 3000) {
-                    ESP_LOGI(TAG, "Boot button pressed, resetting sleep timer");
+                    // A short press while awake advances to the next image. On
+                    // boards where this is the only button it doubles as the
+                    // rotate key (wake-from-sleep presses are released before
+                    // this task starts, so they don't trigger a rotation here).
+                    ESP_LOGI(TAG, "Wake button pressed while awake, triggering rotation");
                     power_manager_reset_sleep_timer();
+                    trigger_image_rotation();
+                    ha_notify_update();
                 }
             }
             last_boot_state = current_boot_state;
@@ -328,8 +334,9 @@ void app_main(void)
     ESP_LOGI(TAG, "Board type: %s", BOARD_HAL_NAME);
 
     // Log initial memory state
-    ESP_LOGI(TAG, "Free heap: %lu bytes, Largest free block: %lu bytes", esp_get_free_heap_size(),
-             heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+    ESP_LOGI(TAG, "Free heap: %lu bytes, Largest free block: %lu bytes",
+             (unsigned long) esp_get_free_heap_size(),
+             (unsigned long) heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
 
     // Initialize Board HAL
     ESP_LOGI(TAG, "Initializing Board HAL...");

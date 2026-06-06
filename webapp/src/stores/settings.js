@@ -54,6 +54,8 @@ export const useSettingsStore = defineStore("settings", () => {
       openaiApiKey: "",
       googleApiKey: "",
     },
+    // Server-side AI generation prompt (sent as X-AI-Prompt on ai_generation pulls)
+    aiPrompt: "",
   });
 
   // ... (existing code)
@@ -183,6 +185,7 @@ export const useSettingsStore = defineStore("settings", () => {
       // AI API Keys (for client-side AI generation)
       deviceSettings.value.aiCredentials.openaiApiKey = data.openai_api_key || "";
       deviceSettings.value.aiCredentials.googleApiKey = data.google_api_key || "";
+      deviceSettings.value.aiPrompt = data.ai_prompt || "";
 
       // Sleep schedule
       deviceSettings.value.sleepScheduleEnabled = data.sleep_schedule_enabled || false;
@@ -266,6 +269,7 @@ export const useSettingsStore = defineStore("settings", () => {
       wifi_ssid: deviceSettings.value.wifiSsid,
       openai_api_key: deviceSettings.value.aiCredentials.openaiApiKey,
       google_api_key: deviceSettings.value.aiCredentials.googleApiKey,
+      ai_prompt: deviceSettings.value.aiPrompt,
     };
 
     // Only include password if it's been changed (not empty)
@@ -461,6 +465,25 @@ export const useSettingsStore = defineStore("settings", () => {
     }
   }
 
+  async function enterDownloadMode() {
+    try {
+      const response = await fetch(`${API_BASE}/api/enter-download-mode`, {
+        method: "POST",
+      });
+      if (response.ok) {
+        return {
+          success: true,
+          message:
+            "Device is rebooting into flash mode and will go offline. Run your flash tool now, or power-cycle to cancel.",
+        };
+      }
+      return { success: false, message: "Failed to enter flash mode" };
+    } catch (_error) {
+      console.error("Error entering flash mode:", _error);
+      return { success: false, message: "Error entering flash mode" };
+    }
+  }
+
   return {
     activeSettingsTab,
     params,
@@ -477,5 +500,6 @@ export const useSettingsStore = defineStore("settings", () => {
     saveSettings,
     savePalette,
     factoryReset,
+    enterDownloadMode,
   };
 });

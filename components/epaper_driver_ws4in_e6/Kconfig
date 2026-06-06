@@ -1,0 +1,6 @@
+config EP_DRIVER_WS4IN_E6
+    bool "Waveshare 4inch E-Paper HAT+ E (Spectra 6, 600x400)"
+    help
+        Driver for Waveshare 4inch e-Paper HAT+ E (E6/Spectra 6, 600x400 pixels).
+        Uses the same Spectra 6 protocol as the 7.3-inch ED2208-GCA display,
+        with resolution adjusted to 600x400.

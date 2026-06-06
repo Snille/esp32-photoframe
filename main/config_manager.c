@@ -51,6 +51,7 @@ static char ha_url[HA_URL_MAX_LEN] = {0};
 // AI API Keys
 static char openai_api_key[AI_API_KEY_MAX_LEN] = {0};
 static char google_api_key[AI_API_KEY_MAX_LEN] = {0};
+static char ai_prompt[AI_PROMPT_MAX_LEN] = {0};
 
 // Power
 static bool deep_sleep_enabled = true;  // Enabled by default
@@ -270,6 +271,11 @@ esp_err_t config_manager_init(void)
         if (nvs_get_str(nvs_handle, NVS_GOOGLE_API_KEY_KEY, google_api_key, &google_key_len) ==
             ESP_OK) {
             ESP_LOGI(TAG, "Loaded Google API Key from NVS");
+        }
+
+        size_t ai_prompt_len = AI_PROMPT_MAX_LEN;
+        if (nvs_get_str(nvs_handle, NVS_AI_PROMPT_KEY, ai_prompt, &ai_prompt_len) == ESP_OK) {
+            ESP_LOGI(TAG, "Loaded AI prompt from NVS");
         }
 
         // Power
@@ -951,6 +957,30 @@ void config_manager_set_google_api_key(const char *key)
 const char *config_manager_get_google_api_key(void)
 {
     return google_api_key;
+}
+
+void config_manager_set_ai_prompt(const char *prompt)
+{
+    if (prompt == NULL) {
+        return;
+    }
+
+    strncpy(ai_prompt, prompt, AI_PROMPT_MAX_LEN - 1);
+    ai_prompt[AI_PROMPT_MAX_LEN - 1] = '\0';
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_str(nvs_handle, NVS_AI_PROMPT_KEY, ai_prompt);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+
+    ESP_LOGI(TAG, "AI prompt set");
+}
+
+const char *config_manager_get_ai_prompt(void)
+{
+    return ai_prompt;
 }
 
 void config_manager_set_deep_sleep_enabled(bool enabled)

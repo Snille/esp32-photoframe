@@ -194,25 +194,92 @@ def generate_splash_svg(width: int, height: int) -> tuple:
     return svg, wifi_placeholder_x, wifi_placeholder_y, wifi_placeholder_size
 
 
-def svg_to_png(svg_path: str, png_path: str, width: int, height: int) -> bool:
-    """Convert SVG to PNG using rsvg-convert."""
-    rsvg = shutil.which("rsvg-convert")
-    if not rsvg:
-        print("ERROR: rsvg-convert not found.")
-        print("  Ubuntu: sudo apt-get install librsvg2-bin")
-        print("  macOS:  brew install librsvg")
+def _pillow_placeholder_png(png_path: str, width: int, height: int) -> bool:
+    """Generate a simple placeholder PNG using Pillow when no SVG renderer is available."""
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+    except ImportError:
+        print("ERROR: Pillow not installed. Run: pip install Pillow")
         return False
 
+    img = Image.new("RGB", (width, height), color=(90, 58, 32))  # #5a3a20
+    draw = ImageDraw.Draw(img)
+
+    # Title
+    title = "ESP Frame"
     try:
-        subprocess.run(
-            [rsvg, "-w", str(width), "-h", str(height), svg_path, "-o", png_path],
-            check=True,
-            capture_output=True,
+        font = ImageFont.truetype("arial.ttf", size=max(18, height // 12))
+    except Exception:
+        font = ImageFont.load_default()
+    bbox = draw.textbbox((0, 0), title, font=font)
+    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    draw.text(((width - tw) // 2, (height - th) // 2 - th), title, fill=(240, 228, 208), font=font)
+
+    # Subtitle
+    sub = "Splash placeholder (Cairo not installed)"
+    try:
+        sfont = ImageFont.truetype("arial.ttf", size=max(10, height // 28))
+    except Exception:
+        sfont = ImageFont.load_default()
+    sbbox = draw.textbbox((0, 0), sub, font=sfont)
+    sw = sbbox[2] - sbbox[0]
+    draw.text(((width - sw) // 2, (height + th) // 2), sub, fill=(200, 190, 170), font=sfont)
+
+    img.save(png_path, "PNG")
+    print("  (Pillow placeholder used - install librsvg or Cairo for the real splash)")
+    return True
+
+
+def svg_to_png(svg_path: str, png_path: str, width: int, height: int) -> bool:
+    """Convert SVG to PNG using rsvg-convert, cairosvg, or Pillow placeholder."""
+    rsvg = shutil.which("rsvg-convert")
+    if rsvg:
+        try:
+            subprocess.run(
+                [rsvg, "-w", str(width), "-h", str(height), svg_path, "-o", png_path],
+                check=True,
+                capture_output=True,
+            )
+            return True
+        except subprocess.CalledProcessError as e:
+            print(f"ERROR: rsvg-convert failed: {e.stderr.decode()}")
+            return False
+
+    # Fallback 1: cairosvg (needs native libcairo)
+    try:
+        import cairosvg
+        with open(svg_path, "rb") as f:
+            svg_data = f.read()
+        cairosvg.svg2png(
+            bytestring=svg_data,
+            write_to=png_path,
+            output_width=width,
+            output_height=height,
         )
         return True
-    except subprocess.CalledProcessError as e:
-        print(f"ERROR: rsvg-convert failed: {e.stderr.decode()}")
-        return False
+    except ImportError:
+        pass  # cairosvg not installed, try next
+    except Exception:
+        pass  # cairosvg installed but Cairo .dll missing, try next
+
+    # Fallback 2: Inkscape CLI (common on Linux/macOS/Windows)
+    inkscape = shutil.which("inkscape")
+    if inkscape:
+        try:
+            subprocess.run(
+                [inkscape, "--export-type=png", f"--export-filename={png_path}",
+                 f"--export-width={width}", f"--export-height={height}", svg_path],
+                check=True,
+                capture_output=True,
+            )
+            return True
+        except subprocess.CalledProcessError:
+            pass
+
+    # Fallback 3: Pillow placeholder (no SVG rendering, just solid background)
+    print("  WARNING: No SVG renderer found (rsvg-convert / cairosvg / Inkscape).")
+    print("    Generating a placeholder PNG with Pillow instead.")
+    return _pillow_placeholder_png(png_path, width, height)
 
 
 def _get_process_cli_base(width: int, height: int) -> list:

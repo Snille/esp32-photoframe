@@ -99,14 +99,55 @@ esp_err_t display_manager_init(void)
                         BOARD_HAL_DISPLAY_HEIGHT;
     epd_image_buffer = (uint8_t *) heap_caps_malloc(image_buffer_size, MALLOC_CAP_SPIRAM);
     if (!epd_image_buffer) {
-        ESP_LOGE(TAG, "Failed to allocate image buffer");
+        // PSRAM not available — fall back to internal SRAM (works on boards without PSRAM)
+        epd_image_buffer = (uint8_t *) heap_caps_malloc(image_buffer_size, MALLOC_CAP_8BIT);
+    }
+    if (!epd_image_buffer) {
+        ESP_LOGE(TAG, "Failed to allocate image buffer (%lu bytes)", (unsigned long) image_buffer_size);
         return ESP_FAIL;
     }
+    ESP_LOGI(TAG, "Image buffer allocated: %lu bytes", (unsigned long) image_buffer_size);
 
     display_manager_initialize_paint();
 
     ESP_LOGI(TAG, "Display manager initialized");
     ESP_LOGI(TAG, "Auto-rotate uses timer-based wake-up (only works during sleep cycles)");
+    return ESP_OK;
+}
+
+uint8_t *display_manager_get_epd_buffer(uint32_t *out_size)
+{
+    if (out_size) {
+        *out_size = image_buffer_size;
+    }
+    return epd_image_buffer;
+}
+
+esp_err_t display_manager_release_epd_buffer(void)
+{
+    if (epd_image_buffer) {
+        heap_caps_free(epd_image_buffer);
+        epd_image_buffer = NULL;
+        ESP_LOGI(TAG, "EPD buffer released (%lu bytes freed)", (unsigned long) image_buffer_size);
+    }
+    return ESP_OK;
+}
+
+esp_err_t display_manager_reclaim_epd_buffer(void)
+{
+    if (epd_image_buffer) {
+        return ESP_OK;
+    }
+    epd_image_buffer = heap_caps_malloc(image_buffer_size, MALLOC_CAP_SPIRAM);
+    if (!epd_image_buffer) {
+        epd_image_buffer = heap_caps_malloc(image_buffer_size, MALLOC_CAP_8BIT);
+    }
+    if (!epd_image_buffer) {
+        ESP_LOGE(TAG, "Failed to reclaim EPD buffer (%lu bytes)", (unsigned long) image_buffer_size);
+        return ESP_ERR_NO_MEM;
+    }
+    display_manager_initialize_paint();
+    ESP_LOGI(TAG, "EPD buffer reclaimed (%lu bytes)", (unsigned long) image_buffer_size);
     return ESP_OK;
 }
 
@@ -186,6 +227,49 @@ esp_err_t display_manager_show_image(const char *filename)
     xSemaphoreGive(display_mutex);
 
     ESP_LOGI(TAG, "Image displayed successfully");
+    return ESP_OK;
+}
+
+esp_err_t display_manager_refresh_from_paint_buffer(void)
+{
+    if (xSemaphoreTake(display_mutex, pdMS_TO_TICKS(5000)) != pdTRUE) {
+        ESP_LOGE(TAG, "Failed to acquire display mutex");
+        return ESP_FAIL;
+    }
+    ESP_LOGI(TAG, "Refreshing e-paper from pre-filled EPD buffer");
+    ESP_LOGI(TAG, "Free heap before epaper refresh: %lu bytes", esp_get_free_heap_size());
+    epaper_display(epd_image_buffer);
+    ESP_LOGI(TAG, "E-paper refresh complete");
+    xSemaphoreGive(display_mutex);
+    return ESP_OK;
+}
+
+esp_err_t display_manager_show_epdgz_buffer(const uint8_t *data, size_t len)
+{
+    if (!data || len == 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    if (xSemaphoreTake(display_mutex, pdMS_TO_TICKS(5000)) != pdTRUE) {
+        ESP_LOGE(TAG, "Failed to acquire display mutex");
+        return ESP_FAIL;
+    }
+
+    ESP_LOGI(TAG, "Displaying EPDGZ from buffer (%zu bytes compressed)", len);
+    ESP_LOGI(TAG, "Free heap before EPDGZ decode: %lu bytes", esp_get_free_heap_size());
+
+    if (GUI_ReadEPDGZBuffer(data, len) != 0) {
+        ESP_LOGE(TAG, "Failed to decode EPDGZ buffer");
+        xSemaphoreGive(display_mutex);
+        return ESP_FAIL;
+    }
+
+    ESP_LOGI(TAG, "Starting e-paper display update");
+    epaper_display(epd_image_buffer);
+    ESP_LOGI(TAG, "E-paper display update complete");
+    ESP_LOGI(TAG, "Free heap after display: %lu bytes", esp_get_free_heap_size());
+
+    xSemaphoreGive(display_mutex);
     return ESP_OK;
 }
 

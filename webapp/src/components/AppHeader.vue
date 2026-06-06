@@ -1,11 +1,29 @@
 <script setup>
-import { ref, computed, watch } from "vue";
+import { ref, computed, watch, onMounted } from "vue";
+import { useTheme } from "vuetify";
 import { useAppStore, useSettingsStore } from "../stores";
+import { themeOptions, THEME_STORAGE_KEY, DEFAULT_THEME } from "../plugins/vuetify";
 
 const appStore = useAppStore();
 const settingsStore = useSettingsStore();
 const sleepDialog = ref(false);
 const rotating = ref(false);
+
+const theme = useTheme();
+const currentTheme = ref(DEFAULT_THEME);
+
+function applyTheme(name) {
+  theme.global.name.value = name;
+  currentTheme.value = name;
+  localStorage.setItem(THEME_STORAGE_KEY, name);
+}
+
+onMounted(() => {
+  const saved = localStorage.getItem(THEME_STORAGE_KEY);
+  if (saved && themeOptions.some((t) => t.value === saved)) {
+    applyTheme(saved);
+  }
+});
 
 const deviceTitle = computed(
   () => settingsStore.deviceSettings.deviceName?.trim() || "ESP32 PhotoFrame"
@@ -46,6 +64,25 @@ function getBatteryColor(level) {
     <v-app-bar-title class="ml-4">{{ deviceTitle }}</v-app-bar-title>
 
     <template #append>
+      <!-- Theme Menu -->
+      <v-menu>
+        <template #activator="{ props }">
+          <v-btn icon class="mr-2" title="Theme" v-bind="props">
+            <v-icon>mdi-palette</v-icon>
+          </v-btn>
+        </template>
+        <v-list density="compact">
+          <v-list-item
+            v-for="opt in themeOptions"
+            :key="opt.value"
+            :active="opt.value === currentTheme"
+            @click="applyTheme(opt.value)"
+          >
+            <v-list-item-title>{{ opt.title }}</v-list-item-title>
+          </v-list-item>
+        </v-list>
+      </v-menu>
+
       <!-- Rotate Now Button -->
       <v-btn
         icon

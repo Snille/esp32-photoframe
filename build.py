@@ -54,15 +54,60 @@ def generate_splash(board):
         sys.exit(e.returncode)
 
 
+def _idf_py():
+    """Return command list to invoke idf.py.
+
+    On Windows, idf.py is a Python script that must be run via the Python
+    interpreter (shebang lines don't work natively). Prefer IDF_PATH env var
+    to avoid picking up the binary idf.py.EXE wrapper via shutil.which.
+    """
+    import shutil
+    idf_path = os.environ.get("IDF_PATH", "")
+    if idf_path:
+        idf_script = os.path.join(idf_path, "tools", "idf.py")
+        if os.path.isfile(idf_script):
+            if sys.platform == "win32":
+                return [sys.executable, idf_script]
+            return [idf_script]
+    # Fallback: search PATH, but skip .EXE wrappers which can't be parsed as Python
+    found = shutil.which("idf.py")
+    if found and not found.lower().endswith(".exe"):
+        if sys.platform == "win32":
+            return [sys.executable, found]
+        return [found]
+    raise RuntimeError(
+        "idf.py not found. Set IDF_PATH or activate ESP-IDF via export.ps1 / export.sh"
+    )
+
+
+def _read_idf_target(board):
+    """Read CONFIG_IDF_TARGET from the board's sdkconfig.defaults, if present."""
+    defaults_path = os.path.join(
+        os.path.dirname(__file__), "boards", f"sdkconfig.defaults.{board}"
+    )
+    try:
+        with open(defaults_path) as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("CONFIG_IDF_TARGET="):
+                    return line.split("=", 1)[1].strip().strip('"')
+    except OSError:
+        pass
+    return None
+
+
 def build_firmware(board, extra_args):
     """Build firmware with idf.py."""
     print(f"\n=== Building firmware for {board} ===")
     sdkconfig_defaults = f"sdkconfig.defaults;boards/sdkconfig.defaults.{board}"
 
-    idf_base = [
-        "idf.py",
+    idf_target = _read_idf_target(board)
+    idf_base = _idf_py() + [
         f"-DSDKCONFIG_DEFAULTS={sdkconfig_defaults}",
+        "-DFIRMWARE_VERSION=2.7.0",
     ]
+    if idf_target:
+        idf_base.append(f"-DIDF_TARGET={idf_target}")
 
     cmake_defines = [a for a in extra_args if a.startswith("-D")]
     post_build_args = [a for a in extra_args if not a.startswith("-D")]
@@ -75,8 +120,8 @@ def build_firmware(board, extra_args):
     except subprocess.CalledProcessError as e:
         print(f"Build failed with exit code {e.returncode}")
         sys.exit(e.returncode)
-    except FileNotFoundError:
-        print("Error: 'idf.py' not found. Please ensure ESP-IDF is correctly installed and activated.")
+    except (FileNotFoundError, RuntimeError) as e:
+        print(f"Error: {e}")
         sys.exit(1)
 
     # Run post-build commands (flash, monitor, etc.)

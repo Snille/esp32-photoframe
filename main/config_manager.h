@@ -116,6 +116,9 @@ const char *config_manager_get_openai_api_key(void);
 void config_manager_set_google_api_key(const char *key);
 const char *config_manager_get_google_api_key(void);
 
+void config_manager_set_ai_prompt(const char *prompt);
+const char *config_manager_get_ai_prompt(void);
+
 // ============================================================================
 // Power
 // ============================================================================

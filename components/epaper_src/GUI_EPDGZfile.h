@@ -16,4 +16,16 @@
  */
 int GUI_ReadEPDGZ(const char *path);
 
+/**
+ * @brief Decompress EPDGZ from a memory buffer directly into the Paint buffer.
+ *
+ * Same as GUI_ReadEPDGZ but takes already-loaded compressed data — avoids
+ * file I/O and the extra 120 KB uncompressed alloc on SRAM-only boards.
+ *
+ * @param data    Pointer to gzip-compressed EPDGZ bytes
+ * @param len     Length of compressed data in bytes
+ * @return 0 on success, non-zero on error
+ */
+int GUI_ReadEPDGZBuffer(const uint8_t *data, size_t len);
+
 #endif

@@ -18,6 +18,9 @@
 #include "config_manager.h"
 #include "display_manager.h"
 #include "esp_app_desc.h"
+#include "esp_ota_ops.h"
+#include "esp_system.h"
+#include "soc/rtc_cntl_reg.h"
 #include "esp_heap_caps.h"
 #include "esp_http_server.h"
 #include "esp_littlefs.h"
@@ -43,6 +46,16 @@
 static const char *TAG = "http_server";
 static httpd_handle_t server = NULL;
 static bool system_ready = false;
+
+// Software-triggered UART download mode is only available on chips whose ROM
+// honors the RTC "force download boot" bit (ESP32-S2/S3/C3/...). Classic ESP32
+// latches boot mode from GPIO0 strapping at reset and has no software path, so
+// those boards still need the physical BOOT button.
+#if defined(RTC_CNTL_OPTION1_REG) && defined(RTC_CNTL_FORCE_DOWNLOAD_BOOT)
+#define BOARD_SUPPORTS_SW_DOWNLOAD_MODE 1
+#else
+#define BOARD_SUPPORTS_SW_DOWNLOAD_MODE 0
+#endif
 
 #define HTTPD_503 "503 Service Unavailable"
 
@@ -397,6 +410,64 @@ static esp_err_t display_image_direct_handler(httpd_req_t *req)
     }
 
     image_format_t image_format = IMAGE_FORMAT_UNKNOWN;
+
+    // --- Raw EPD push path (SRAM-only boards) ---
+    // The server streams uncompressed, display-ready 4bpp panel bytes with
+    // Content-Type: application/x-epd-raw. We copy them straight into the
+    // pre-allocated EPD framebuffer and refresh — no temp file, no inflate, no
+    // extra allocation. This mirrors the raw-EPD *pull* path in utils.c and is
+    // the only memory-safe push route on boards without PSRAM / persistent
+    // storage. Boards with flash/SD keep using the multipart/EPDGZ/PNG paths
+    // below, so other hardware is unaffected.
+    if (strstr(content_type, "application/x-epd-raw") != NULL) {
+        uint32_t epd_buf_size = 0;
+        uint8_t *epd_buf = display_manager_get_epd_buffer(&epd_buf_size);
+        if (!epd_buf || epd_buf_size == 0) {
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "EPD buffer unavailable");
+            return ESP_FAIL;
+        }
+
+        size_t content_len = req->content_len;
+        if (content_len != epd_buf_size) {
+            ESP_LOGE(TAG, "Raw EPD size mismatch: got %zu, expected %lu bytes", content_len,
+                     (unsigned long) epd_buf_size);
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Raw EPD size mismatch");
+            return ESP_FAIL;
+        }
+
+        size_t received = 0;
+        while (received < content_len) {
+            int ret = httpd_req_recv(req, (char *) epd_buf + received, content_len - received);
+            if (ret <= 0) {
+                if (ret == HTTPD_SOCK_ERR_TIMEOUT)
+                    continue;
+                ESP_LOGE(TAG, "Failed to receive raw EPD data");
+                httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to receive data");
+                return ESP_FAIL;
+            }
+            received += ret;
+        }
+
+        ESP_LOGI(TAG, "Raw EPD received (%zu bytes), refreshing display", received);
+
+        esp_err_t err = display_manager_refresh_from_paint_buffer();
+        if (err != ESP_OK) {
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to display image");
+            return ESP_FAIL;
+        }
+
+        ha_notify_update();
+
+        cJSON *response = cJSON_CreateObject();
+        cJSON_AddStringToObject(response, "status", "success");
+        cJSON_AddStringToObject(response, "message", "Raw EPD displayed successfully");
+        char *json_str = cJSON_Print(response);
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, json_str);
+        free(json_str);
+        cJSON_Delete(response);
+        return ESP_OK;
+    }
 
     // Check if this is a multipart upload (with optional thumbnail)
     bool is_multipart = (strstr(content_type, "multipart/form-data") != NULL);
@@ -1656,6 +1727,8 @@ static esp_err_t config_handler(httpd_req_t *req)
         const char *google_key = config_manager_get_google_api_key();
         cJSON_AddStringToObject(root, "openai_api_key", openai_key ? openai_key : "");
         cJSON_AddStringToObject(root, "google_api_key", google_key ? google_key : "");
+        const char *ai_prompt = config_manager_get_ai_prompt();
+        cJSON_AddStringToObject(root, "ai_prompt", ai_prompt ? ai_prompt : "");
 
         // Other
         cJSON_AddBoolToObject(root, "deep_sleep_enabled", config_manager_get_deep_sleep_enabled());
@@ -2071,6 +2144,14 @@ static esp_err_t system_info_handler(httpd_req_t *req)
     cJSON_AddBoolToObject(response, "sdcard_inserted", sdcard_inserted);
     cJSON_AddBoolToObject(response, "has_flash_storage", has_flash_storage);
 
+    // OTA is only possible when the flash layout provides an update slot.
+    // Single-factory boards (e.g. 4MB FireBeetle) have none, so the web UI
+    // hides the firmware-update section.
+    cJSON_AddBoolToObject(response, "ota_supported",
+                          esp_ota_get_next_update_partition(NULL) != NULL);
+    cJSON_AddBoolToObject(response, "download_mode_supported",
+                          BOARD_SUPPORTS_SW_DOWNLOAD_MODE);
+
     // Pass along new storage properties
     cJSON_AddNumberToObject(response, "storage_total", storage_total);
     cJSON_AddNumberToObject(response, "storage_used", storage_used);
@@ -2251,6 +2332,41 @@ static esp_err_t factory_reset_handler(httpd_req_t *req)
     xTaskCreate(restart_task, "restart_task", 2048, NULL, 5, NULL);
 
     return ESP_OK;
+}
+
+#if BOARD_SUPPORTS_SW_DOWNLOAD_MODE
+static void download_mode_task(void *arg)
+{
+    vTaskDelay(pdMS_TO_TICKS(1000));  // Wait for HTTP response to be sent
+    ESP_LOGW(TAG, "Entering UART download (flash) mode by request");
+    // Force the ROM bootloader into UART download mode on the next boot, then
+    // software-reset. The chip waits for esptool over UART (no BOOT button
+    // needed). A full reset via the EN pin (esptool --after hard_reset) or a
+    // power cycle clears this and boots the app normally.
+    REG_WRITE(RTC_CNTL_OPTION1_REG, RTC_CNTL_FORCE_DOWNLOAD_BOOT);
+    esp_restart();
+}
+#endif
+
+static esp_err_t enter_download_mode_handler(httpd_req_t *req)
+{
+#if BOARD_SUPPORTS_SW_DOWNLOAD_MODE
+    ESP_LOGI(TAG, "Download (flash) mode requested via API");
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req,
+                       "{\"status\":\"success\",\"message\":\"Entering flash/download mode. The "
+                       "device will go offline; run your flash tool now, or power-cycle to "
+                       "cancel.\"}");
+    xTaskCreate(download_mode_task, "dl_mode", 2048, NULL, 5, NULL);
+    return ESP_OK;
+#else
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_status(req, "400 Bad Request");
+    httpd_resp_sendstr(req,
+                       "{\"status\":\"error\",\"message\":\"Software flash mode is not supported on "
+                       "this chip (classic ESP32). Use the BOOT button.\"}");
+    return ESP_OK;
+#endif
 }
 
 static esp_err_t display_calibration_handler(httpd_req_t *req)
@@ -2767,6 +2883,12 @@ esp_err_t http_server_init(void)
                                                 .handler = color_palette_handler,
                                                 .user_ctx = NULL};
         httpd_register_uri_handler(server, &color_palette_delete_uri);
+
+        httpd_uri_t enter_download_mode_uri = {.uri = "/api/enter-download-mode",
+                                               .method = HTTP_POST,
+                                               .handler = enter_download_mode_handler,
+                                               .user_ctx = NULL};
+        httpd_register_uri_handler(server, &enter_download_mode_uri);
 
         httpd_uri_t factory_reset_uri = {.uri = "/api/factory-reset",
                                          .method = HTTP_POST,

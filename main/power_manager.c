@@ -2,6 +2,7 @@
 
 #include <driver/gpio.h>
 #include <driver/rtc_io.h>
+#include <esp_idf_version.h>
 #include <esp_log.h>
 #include <esp_pm.h>
 #include <esp_sleep.h>
@@ -12,6 +13,20 @@
 #include <nvs.h>
 #include <nvs_flash.h>
 #include <time.h>
+
+// IDF < 6.0 compat: esp_sleep_get_wakeup_causes() didn't exist; emulate as bitmask
+#if ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(6, 0, 0)
+static inline uint32_t esp_sleep_get_wakeup_causes(void)
+{
+    esp_sleep_wakeup_cause_t c = esp_sleep_get_wakeup_cause();
+    return (c == ESP_SLEEP_WAKEUP_UNDEFINED) ? 0u : (1u << (uint32_t)c);
+}
+#endif
+
+// Classic ESP32 calls it ALL_LOW; newer IDF / S3 renamed it to ANY_LOW
+#ifndef ESP_EXT1_WAKEUP_ANY_LOW
+#define ESP_EXT1_WAKEUP_ANY_LOW ESP_EXT1_WAKEUP_ALL_LOW
+#endif
 
 #if CONFIG_SOC_USB_SERIAL_JTAG_SUPPORTED
 #include <hal/usb_serial_jtag_ll.h>
@@ -156,6 +171,62 @@ static void sleep_timer_task(void *arg)
     }
 }
 
+// Monitors the wake button while the device is awake: holding it for >=2s puts
+// the device back into deep sleep. Uses the same key that wakes the device
+// (BOARD_HAL_WAKEUP_KEY, active-low with internal pull-up).
+static void button_monitor_task(void *arg)
+{
+    if (BOARD_HAL_WAKEUP_KEY == GPIO_NUM_NC) {
+        vTaskDelete(NULL);
+        return;
+    }
+
+    // power_manager_init() latched the button pad with gpio_hold for false-wake
+    // protection during deep sleep. Release that hold now so we can read the
+    // live button state while awake; power_manager_enter_sleep() re-applies it.
+    gpio_hold_dis(BOARD_HAL_WAKEUP_KEY);
+
+    const int64_t HOLD_TO_SLEEP_US = 2000000;  // 2 seconds
+    bool released_since_boot = false;
+    int64_t press_start = 0;
+
+    while (1) {
+        vTaskDelay(pdMS_TO_TICKS(50));
+
+        // Active-low (pull-up enabled): level 0 means the button is pressed.
+        bool pressed = (gpio_get_level(BOARD_HAL_WAKEUP_KEY) == 0);
+
+        // Ignore the press that woke the device until it has been released once,
+        // so a still-held wake press doesn't immediately re-sleep the device.
+        if (!released_since_boot) {
+            if (!pressed) {
+                released_since_boot = true;
+            }
+            continue;
+        }
+
+        if (pressed) {
+            if (press_start == 0) {
+                press_start = esp_timer_get_time();
+            } else if (esp_timer_get_time() - press_start >= HOLD_TO_SLEEP_US) {
+                ESP_LOGI(TAG, "Wake button held >=2s, entering deep sleep");
+                board_hal_led_set(BOARD_HAL_LED_ACTIVITY, true);
+                vTaskDelay(pdMS_TO_TICKS(150));
+                board_hal_led_set(BOARD_HAL_LED_ACTIVITY, false);
+                // Wait for release before sleeping, otherwise EXT1 (ALL_LOW)
+                // sees the still-pressed (low) pin and wakes us up immediately.
+                while (gpio_get_level(BOARD_HAL_WAKEUP_KEY) == 0) {
+                    vTaskDelay(pdMS_TO_TICKS(50));
+                }
+                vTaskDelay(pdMS_TO_TICKS(100));  // debounce after release
+                power_manager_enter_sleep();
+            }
+        } else {
+            press_start = 0;
+        }
+    }
+}
+
 static void power_manager_enable_auto_light_sleep(void)
 {
     // Configure automatic light sleep with CPU frequency scaling
@@ -295,6 +366,11 @@ esp_err_t power_manager_init(void)
     }
     xTaskCreate(rotation_timer_task, "rotation_timer", 16384, NULL, 5, &rotation_timer_task_handle);
 
+    // Long-press the wake button (>=2s) while awake to re-enter deep sleep.
+    if (BOARD_HAL_WAKEUP_KEY != GPIO_NUM_NC) {
+        xTaskCreate(button_monitor_task, "btn_monitor", 2560, NULL, 5, NULL);
+    }
+
     power_manager_enable_auto_light_sleep();
 
     ESP_LOGI(TAG, "Power manager initialized");
@@ -344,6 +420,20 @@ void power_manager_enter_sleep(void)
     if (wakeup_mask != 0) {
         esp_sleep_enable_ext1_wakeup(wakeup_mask, ESP_EXT1_WAKEUP_ANY_LOW);
     }
+
+    // Re-latch the button pads (the awake button-monitor task released the hold
+    // to read live state). With the buttons released/high, this retains the
+    // internal pull-ups during deep sleep and prevents false EXT1 wake-ups.
+    if (BOARD_HAL_WAKEUP_KEY != GPIO_NUM_NC) {
+        gpio_hold_en(BOARD_HAL_WAKEUP_KEY);
+    }
+    if (BOARD_HAL_ROTATE_KEY != GPIO_NUM_NC) {
+        gpio_hold_en(BOARD_HAL_ROTATE_KEY);
+    }
+    if (BOARD_HAL_CLEAR_KEY != GPIO_NUM_NC) {
+        gpio_hold_en(BOARD_HAL_CLEAR_KEY);
+    }
+    gpio_deep_sleep_hold_en();
 
     // Stop WiFi cleanly before deep sleep so the MAC/PHY drains pending
     // state and the modem domain transitions through a normal teardown

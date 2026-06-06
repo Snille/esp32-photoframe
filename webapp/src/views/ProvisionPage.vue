@@ -123,7 +123,7 @@ async function submitForm() {
 
 <template>
   <v-app>
-    <v-main class="provision-main bg-grey-lighten-4">
+    <v-main class="provision-main">
       <v-card class="provision-card" elevation="12">
         <v-card-title class="text-h6"> PhotoFrame Setup </v-card-title>
 

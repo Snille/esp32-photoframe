@@ -51,6 +51,15 @@ menu "Board Configuration"
                 Includes battery monitoring and deep sleep support.
                 SD card: SPI interface.
 
+        config BOARD_DRIVER_DFROBOT_FIREBEETLE_ESP32E
+            bool "DFRobot FireBeetle 2 ESP32-E + Waveshare 4inch HAT+ E"
+            select EP_DRIVER_WS4IN_E6
+            help
+                Driver for DFRobot FireBeetle 2 ESP32-E (classic ESP32, WROOM-32E)
+                paired with Waveshare 4inch e-Paper HAT+ E (Spectra 6, 600x400).
+                No SD card, no PMIC, no RTC.
+                Deep sleep via timer or wakeup button (if wired).
+
     endchoice
 
     config USE_INTERNAL_FLASH_STORAGE
