@@ -24,6 +24,15 @@ CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="boards/partitions.dfrobot_firebeetle_esp
 # Disable OTA (no OTA slots in partition table)
 CONFIG_APP_UPDATE_PARTITION_PREFER_NVS_FACTORY=n
 
+# HTTPS support: compile in the FULL Mozilla CA bundle so the device can verify
+# public certificates (Let's Encrypt etc.) served by a reverse proxy, without
+# manual cert pinning. utils.c falls back to esp_crt_bundle_attach when no cert
+# is pinned. A clean build otherwise defaults to the smaller CMN list, which can
+# miss some roots; pin FULL here for reproducible HTTPS on fresh builds.
+# Verified on hardware 2026-06-07: valid cert -> fetch ok; expired cert -> rejected.
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y
+
 # Memory optimization for HTTPS on SRAM-only boards
 # Dynamic TLS buffers: only allocate during active TLS connections instead of statically
 # This frees ~20KB SRAM when no TLS connection is in use
