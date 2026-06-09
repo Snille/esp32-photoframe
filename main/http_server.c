@@ -2160,6 +2160,15 @@ static esp_err_t system_info_handler(httpd_req_t *req)
     cJSON_AddBoolToObject(response, "download_mode_supported",
                           BOARD_SUPPORTS_SW_DOWNLOAD_MODE);
 
+    // HTTPS image rotation needs ~16 KB of contiguous internal RAM for the TLS
+    // handshake, which SRAM-only boards (no PSRAM, e.g. the 4MB FireBeetle)
+    // can't spare alongside the permanently-held 120 KB framebuffer — TLS
+    // fails with alloc errors and the image never downloads. Boards with PSRAM
+    // have the headroom, so the web UI only warns against https:// image URLs
+    // when PSRAM is absent.
+    cJSON_AddBoolToObject(response, "https_supported",
+                          heap_caps_get_total_size(MALLOC_CAP_SPIRAM) > 0);
+
     // Pass along new storage properties
     cJSON_AddNumberToObject(response, "storage_total", storage_total);
     cJSON_AddNumberToObject(response, "storage_used", storage_used);

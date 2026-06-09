@@ -26,6 +26,9 @@ export const useAppStore = defineStore("app", () => {
     compile_date: "",
     idf_version: "",
     board_name: "waveshare_photopainter_73",
+    // Default true so we never warn before system-info loads or on older
+    // firmware that doesn't report the flag; set false on no-PSRAM boards.
+    https_supported: true,
   });
   const loading = ref({
     albums: false,

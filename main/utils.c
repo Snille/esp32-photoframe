@@ -16,6 +16,7 @@
 #include "display_manager.h"
 #include "esp_app_desc.h"
 #include "esp_crt_bundle.h"
+#include "esp_heap_caps.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "esp_mac.h"
@@ -46,6 +47,18 @@ void utils_set_last_fetch_error(const char *error)
 const char *utils_get_last_fetch_error(void)
 {
     return last_fetch_error;
+}
+
+// Logs internal-RAM headroom at a labelled point: total free 8-bit-capable
+// bytes and — the figure that actually limits a 120 KB framebuffer or a ~16 KB
+// TLS allocation — the largest single contiguous free block. Instruments the
+// SRAM-only "release the framebuffer around the TLS handshake" path so we can
+// read the real coexistence margin instead of guessing at fragmentation.
+static void log_heap_headroom(const char *where)
+{
+    ESP_LOGI(TAG, "HEAP[%s]: free=%u largest_block=%u (internal 8-bit)", where,
+             (unsigned) heap_caps_get_free_size(MALLOC_CAP_8BIT),
+             (unsigned) heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
 }
 
 // Last cert pin error (transient, consumed by HTTP handler on failure response)
@@ -645,6 +658,12 @@ esp_err_t fetch_and_save_image_from_url(const char *url, char *saved_image_path,
         char batt_str[4];
         snprintf(batt_str, sizeof(batt_str), "%i", board_hal_get_battery_percent());
         esp_http_client_set_header(client, "X-Battery-Percentage", batt_str);
+
+        // Instrument the internal-RAM margin right before the request. On
+        // SRAM-only boards this is the figure that decides whether an HTTPS
+        // handshake (~16 KB) can be satisfied alongside the permanently-held
+        // 120 KB framebuffer; HTTP needs only a few KB and fits comfortably.
+        log_heap_headroom("before fetch");
 
         err = esp_http_client_perform(client);
 

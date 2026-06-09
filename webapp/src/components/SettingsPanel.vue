@@ -23,6 +23,29 @@ const hasUploadSupport = computed(
     appStore.systemInfo.sdcard_inserted || appStore.systemInfo.has_flash_storage
 );
 
+// SRAM-only boards (no PSRAM, e.g. the 4MB FireBeetle) can't complete a TLS
+// handshake alongside the permanently-held 120KB framebuffer, so https:// image
+// URLs fail with out-of-memory errors and never rotate. system-info exposes
+// https_supported=false on those boards. Treat a missing flag as supported so
+// older firmware doesn't get a false warning.
+const httpsUnsupported = computed(
+  () => appStore.systemInfo.https_supported === false
+);
+
+const imageUrlIsHttps = computed(() =>
+  /^\s*https:\/\//i.test(settingsStore.deviceSettings.imageUrl || "")
+);
+
+// Block saving only when this board can't do HTTPS *and* an https:// URL is set
+// in URL rotation mode — otherwise the user would save a config that can never
+// fetch an image.
+const httpsUrlBlocked = computed(
+  () =>
+    httpsUnsupported.value &&
+    imageUrlIsHttps.value &&
+    settingsStore.deviceSettings.rotationMode === "url"
+);
+
 // Device time state
 const deviceTime = ref("");
 const syncingTime = ref(false);
@@ -586,12 +609,36 @@ async function enterFlashMode() {
                       v-model="settingsStore.deviceSettings.imageUrl"
                       label="Image URL"
                       variant="outlined"
-                      hide-details
-                      class="mb-4"
+                      class="mb-2"
+                      :error="httpsUrlBlocked"
+                      :error-messages="
+                        httpsUrlBlocked
+                          ? 'HTTPS is not supported on this board — use an http:// URL.'
+                          : []
+                      "
+                      :hint="
+                        httpsUnsupported
+                          ? 'This board has no PSRAM; only http:// image URLs work for rotation.'
+                          : undefined
+                      "
+                      :persistent-hint="httpsUnsupported"
                     />
 
+                    <v-alert
+                      v-if="httpsUrlBlocked"
+                      type="warning"
+                      variant="tonal"
+                      density="compact"
+                      class="mb-4"
+                    >
+                      HTTPS image URLs are not supported on this board (no PSRAM — the
+                      TLS handshake runs out of memory). Use an
+                      <strong>http://</strong> URL, e.g. your photoframe server on the
+                      local network.
+                    </v-alert>
+
                     <div
-                      v-if="settingsStore.deviceSettings.caCertSet"
+                      v-if="settingsStore.deviceSettings.caCertSet && !httpsUnsupported"
                       class="mb-4 d-flex flex-column ga-1"
                     >
                       <v-chip
@@ -914,7 +961,12 @@ async function enterFlashMode() {
             {{ saveMessage || "Failed to save settings" }}
           </v-chip>
         </v-fade-transition>
-        <v-btn color="primary" :loading="saving" @click="saveSettings">
+        <v-btn
+          color="primary"
+          :loading="saving"
+          :disabled="httpsUrlBlocked"
+          @click="saveSettings"
+        >
           <v-icon icon="mdi-content-save" start />
           Save Settings
         </v-btn>
