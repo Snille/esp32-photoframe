@@ -86,6 +86,44 @@ The measured palette accounts for the fact that e-paper displays show darker, mo
 
 Configure via web interface **Settings** section.
 
+### Battery Life Estimate (FireBeetle 2 ESP32-E + 4" Spectra 6)
+
+Worked example for the DFRobot FireBeetle 2 ESP32-E driving the Waveshare 4" Spectra 6
+panel over URL rotation. **The periodic wake cycles dominate the budget — deep sleep is
+< 2% of it** — so battery life scales almost linearly with the rotation interval (and with
+any sleep schedule), not with the sleep current.
+
+**Energy per wake cycle** (wake → WiFi connect → fetch image → ~19s e-paper refresh → sleep):
+
+| Phase | Current (approx) | Time | Energy |
+|-------|------------------|------|--------|
+| WiFi connect + image fetch | ~110 mA | ~8 s | ~0.24 mAh |
+| E-paper refresh (panel + CPU in light sleep) | ~45 mA | ~19 s | ~0.24 mAh |
+| Boot / teardown | ~50 mA | ~3 s | ~0.04 mAh |
+| **Per cycle** | | ~30 s | **~0.52 mAh** |
+
+Deep sleep draws ~15–50 µA (target ~10 µA; GPIO2 is driven low before sleep so the
+on-board LED doesn't leak — see the board HAL). Over a day that's < 1 mAh, i.e. negligible
+next to the wake cycles.
+
+**Per-day math** (usable LiPo capacity ≈ 80% of nominal — 4.2→3.4V plus regulator losses;
+a 4000 mAh pack ≈ 3200 mAh usable):
+
+| Rotation interval | Sleep schedule | Cycles/day | Energy/day | 4000 mAh life (≈ central) |
+|-------------------|----------------|-----------|------------|----------------------------|
+| 15 min | none | 96 | ~50 mAh | ~9 weeks (~2 months) |
+| 15 min | 22:00–04:30 off (6.5 h) | ~70 | ~37 mAh | **~12 weeks (~3 months)** |
+| 30 min | 22:00–04:30 off | ~35 | ~19 mAh | ~6 months |
+| 60 min | 22:00–04:30 off | ~18 | ~10 mAh | ~10–11 months |
+
+Sleep-schedule note: when the next rotation would land inside the schedule, the firmware
+schedules the wake for the **end** of the window (`calculate_next_wakeup_interval`), so the
+frame sleeps straight through with no WiFi/refresh — the saving is full, not partial.
+
+Real-world spread is roughly ±40% (WiFi association time and panel refresh current are the
+biggest unknowns). For an exact figure in your environment, log `GET /api/battery`
+(returns mV + %) over a few days and extrapolate the discharge slope.
+
 ## AI Image Generation 🤖
 
 The web interface supports client-side AI image generation using OpenAI (GPT Image, DALL-E) or Google Gemini.
