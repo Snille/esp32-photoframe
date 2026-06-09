@@ -283,6 +283,20 @@ esp_err_t apply_config_from_json(cJSON *root)
         power_manager_set_deep_sleep_enabled(cJSON_IsTrue(item));
     }
 
+    // Button gestures → actions
+    item = cJSON_GetObjectItem(root, "button_action_short");
+    if (item && cJSON_IsString(item)) {
+        config_manager_set_button_action_short(cJSON_GetStringValue(item));
+    }
+    item = cJSON_GetObjectItem(root, "button_action_long");
+    if (item && cJSON_IsString(item)) {
+        config_manager_set_button_action_long(cJSON_GetStringValue(item));
+    }
+    item = cJSON_GetObjectItem(root, "button_action_hold");
+    if (item && cJSON_IsString(item)) {
+        config_manager_set_button_action_hold(cJSON_GetStringValue(item));
+    }
+
     return ESP_OK;
 }
 

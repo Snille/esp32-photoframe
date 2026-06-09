@@ -47,6 +47,25 @@ esp_err_t board_hal_prepare_for_sleep(void)
 {
     ESP_LOGI(TAG, "Preparing FireBeetle for sleep");
     epaper_enter_deepsleep();
+
+    // GPIO2 is dual-purpose on this board: it is the e-paper SPI chip-select
+    // AND the FireBeetle 2 ESP32-E's on-board (active-high) LED. While awake the
+    // SPI driver leaves CS idling high between transactions, so the LED is lit;
+    // if that high level were carried into deep sleep the LED would keep drawing
+    // current (a few mA) and wreck the ~10 uA sleep budget. epaper_enter_deepsleep()
+    // already drives CS low and latches it, but re-assert it here so the LED-off
+    // intent lives in the board layer and survives any change to the shared
+    // display driver.
+    //
+    // Driving LOW (not leaving it as a high-Z input) is deliberate: the pad is
+    // configured with an internal pull-up, so a floating input would be pulled
+    // back high and re-light the LED throughout deep sleep.
+    gpio_hold_dis(BOARD_HAL_EPD_CS_PIN);
+    gpio_set_direction(BOARD_HAL_EPD_CS_PIN, GPIO_MODE_OUTPUT);
+    gpio_set_level(BOARD_HAL_EPD_CS_PIN, 0);
+    gpio_hold_en(BOARD_HAL_EPD_CS_PIN);
+    gpio_deep_sleep_hold_en();
+
     return ESP_OK;
 }
 

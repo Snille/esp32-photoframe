@@ -127,6 +127,20 @@ void config_manager_set_deep_sleep_enabled(bool enabled);
 bool config_manager_get_deep_sleep_enabled(void);
 
 // ============================================================================
+// Button gestures → actions
+// ============================================================================
+// Action ids: "none", "next_image", "sleep", "toggle_deep_sleep", "info_screen".
+
+void config_manager_set_button_action_short(const char *action);
+const char *config_manager_get_button_action_short(void);
+
+void config_manager_set_button_action_long(const char *action);
+const char *config_manager_get_button_action_long(void);
+
+void config_manager_set_button_action_hold(const char *action);
+const char *config_manager_get_button_action_hold(void);
+
+// ============================================================================
 // Config Sync
 // ============================================================================
 

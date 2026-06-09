@@ -101,6 +101,17 @@ typedef enum {
 // Power
 #define NVS_DEEP_SLEEP_KEY "deep_sleep"
 
+// Button gestures → actions (configurable from the WebUI). Action ids:
+// "none", "next_image", "sleep", "toggle_deep_sleep", "info_screen".
+// Wake-from-deep-sleep is implicit (any press wakes the frame) and not mapped.
+#define BUTTON_ACTION_MAX_LEN 24
+#define NVS_BTN_SHORT_KEY "btn_short"  // short press (<2s)
+#define NVS_BTN_LONG_KEY "btn_long"    // long press (2-5s)
+#define NVS_BTN_HOLD_KEY "btn_hold"    // hold (>=5s)
+#define DEFAULT_BTN_SHORT_ACTION "next_image"
+#define DEFAULT_BTN_LONG_ACTION "sleep"
+#define DEFAULT_BTN_HOLD_ACTION "info_screen"
+
 // Home Assistant
 #define NVS_HA_URL_KEY "ha_url"
 

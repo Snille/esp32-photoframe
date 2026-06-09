@@ -7,6 +7,15 @@ import ProcessingControls from "./ProcessingControls.vue";
 const settingsStore = useSettingsStore();
 const appStore = useAppStore();
 
+// Selectable actions for the wake-button gestures (must match firmware ids).
+const buttonActionOptions = [
+  { title: "Do nothing", value: "none" },
+  { title: "Next image", value: "next_image" },
+  { title: "Go to deep sleep", value: "sleep" },
+  { title: "Toggle deep sleep on/off", value: "toggle_deep_sleep" },
+  { title: "Show info screen", value: "info_screen" },
+];
+
 // Boards with persistent storage support in-browser upload (and thus the
 // client-side AI keys). SRAM-only boards hide those fields.
 const hasUploadSupport = computed(
@@ -709,6 +718,37 @@ async function enterFlashMode() {
                 power consumption. Only disable if permanently powered via USB.
               </v-alert>
             </v-expand-transition>
+
+            <v-divider class="my-4" />
+
+            <div class="text-subtitle-1 mb-1">Button</div>
+            <div class="text-caption text-medium-emphasis mb-3">
+              Choose what the wake button does while the frame is awake. A press always wakes the
+              frame from deep sleep first.
+            </div>
+            <v-select
+              v-model="settingsStore.deviceSettings.buttonActionShort"
+              :items="buttonActionOptions"
+              label="Short press (&lt;2s)"
+              variant="outlined"
+              density="compact"
+              class="mb-2"
+            />
+            <v-select
+              v-model="settingsStore.deviceSettings.buttonActionLong"
+              :items="buttonActionOptions"
+              label="Long press (2–5s)"
+              variant="outlined"
+              density="compact"
+              class="mb-2"
+            />
+            <v-select
+              v-model="settingsStore.deviceSettings.buttonActionHold"
+              :items="buttonActionOptions"
+              label="Hold (≥5s)"
+              variant="outlined"
+              density="compact"
+            />
           </v-tabs-window-item>
 
           <!-- Home Assistant Tab -->

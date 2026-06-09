@@ -1733,6 +1733,14 @@ static esp_err_t config_handler(httpd_req_t *req)
         // Other
         cJSON_AddBoolToObject(root, "deep_sleep_enabled", config_manager_get_deep_sleep_enabled());
 
+        // Button gestures → actions
+        cJSON_AddStringToObject(root, "button_action_short",
+                                config_manager_get_button_action_short());
+        cJSON_AddStringToObject(root, "button_action_long",
+                                config_manager_get_button_action_long());
+        cJSON_AddStringToObject(root, "button_action_hold",
+                                config_manager_get_button_action_hold());
+
         char *json_str = cJSON_Print(root);
         httpd_resp_set_type(req, "application/json");
         httpd_resp_sendstr(req, json_str);

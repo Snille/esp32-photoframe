@@ -49,6 +49,10 @@ export const useSettingsStore = defineStore("settings", () => {
     haUrl: "",
     // Power
     deepSleepEnabled: true,
+    // Button gestures → actions
+    buttonActionShort: "next_image",
+    buttonActionLong: "sleep",
+    buttonActionHold: "info_screen",
     // AI API Keys (for client-side AI generation)
     aiCredentials: {
       openaiApiKey: "",
@@ -168,6 +172,9 @@ export const useSettingsStore = defineStore("settings", () => {
       deviceSettings.value.caCertSet = data.ca_cert_set || false;
       deviceSettings.value.lastFetchError = data.last_fetch_error || "";
       deviceSettings.value.deepSleepEnabled = data.deep_sleep_enabled !== false;
+      deviceSettings.value.buttonActionShort = data.button_action_short || "next_image";
+      deviceSettings.value.buttonActionLong = data.button_action_long || "sleep";
+      deviceSettings.value.buttonActionHold = data.button_action_hold || "info_screen";
       deviceSettings.value.haUrl = data.ha_url || "";
       deviceSettings.value.saveDownloadedImages = data.save_downloaded_images !== false;
       deviceSettings.value.accessToken = data.access_token || "";
@@ -255,6 +262,9 @@ export const useSettingsStore = defineStore("settings", () => {
       image_url: deviceSettings.value.imageUrl,
       ha_url: deviceSettings.value.haUrl,
       deep_sleep_enabled: deviceSettings.value.deepSleepEnabled,
+      button_action_short: deviceSettings.value.buttonActionShort,
+      button_action_long: deviceSettings.value.buttonActionLong,
+      button_action_hold: deviceSettings.value.buttonActionHold,
       save_downloaded_images: deviceSettings.value.saveDownloadedImages,
       display_orientation: deviceSettings.value.displayOrientation,
       sleep_schedule_enabled: deviceSettings.value.sleepScheduleEnabled,

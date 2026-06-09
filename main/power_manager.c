@@ -32,9 +32,12 @@ static inline uint32_t esp_sleep_get_wakeup_causes(void)
 #include <hal/usb_serial_jtag_ll.h>
 #endif
 
+#include <string.h>
+
 #include "board_hal.h"
 #include "config.h"
 #include "config_manager.h"
+#include "display_manager.h"
 #include "ha_integration.h"
 #include "periodic_tasks.h"
 #include "storage.h"
@@ -171,9 +174,40 @@ static void sleep_timer_task(void *arg)
     }
 }
 
-// Monitors the wake button while the device is awake: holding it for >=2s puts
-// the device back into deep sleep. Uses the same key that wakes the device
-// (BOARD_HAL_WAKEUP_KEY, active-low with internal pull-up).
+// Run the configured action for a button gesture. Action ids mirror the
+// firmware config / WebUI: "none", "next_image", "sleep", "toggle_deep_sleep",
+// "info_screen". Called only while awake (after the wake press is released).
+static void dispatch_button_action(const char *action)
+{
+    if (action == NULL || strcmp(action, "none") == 0) {
+        return;
+    }
+    if (strcmp(action, "next_image") == 0) {
+        ESP_LOGI(TAG, "Button action: next image");
+        power_manager_reset_sleep_timer();
+        trigger_image_rotation();
+        ha_notify_update();
+    } else if (strcmp(action, "sleep") == 0) {
+        ESP_LOGI(TAG, "Button action: enter deep sleep");
+        power_manager_enter_sleep();  // does not return
+    } else if (strcmp(action, "toggle_deep_sleep") == 0) {
+        bool next = !config_manager_get_deep_sleep_enabled();
+        ESP_LOGI(TAG, "Button action: toggle deep sleep -> %s", next ? "enabled" : "disabled");
+        power_manager_set_deep_sleep_enabled(next);
+        power_manager_reset_sleep_timer();
+    } else if (strcmp(action, "info_screen") == 0) {
+        ESP_LOGI(TAG, "Button action: show info screen");
+        power_manager_reset_sleep_timer();
+        display_manager_show_info_screen();
+    } else {
+        ESP_LOGW(TAG, "Unknown button action: %s", action);
+    }
+}
+
+// Detects button gestures on the wake key while the device is awake and runs
+// the configured action: short press (<2s), long press (2-5s), hold (>=5s).
+// Uses the same key that wakes the device (BOARD_HAL_WAKEUP_KEY, active-low
+// with internal pull-up). Wake-from-deep-sleep is implicit and not a gesture.
 static void button_monitor_task(void *arg)
 {
     if (BOARD_HAL_WAKEUP_KEY == GPIO_NUM_NC) {
@@ -186,9 +220,11 @@ static void button_monitor_task(void *arg)
     // live button state while awake; power_manager_enter_sleep() re-applies it.
     gpio_hold_dis(BOARD_HAL_WAKEUP_KEY);
 
-    const int64_t HOLD_TO_SLEEP_US = 2000000;  // 2 seconds
+    const int64_t LONG_US = 2000000;  // >=2s = long press
+    const int64_t HOLD_US = 5000000;  // >=5s = hold
     bool released_since_boot = false;
     int64_t press_start = 0;
+    bool hold_fired = false;
 
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(50));
@@ -197,7 +233,7 @@ static void button_monitor_task(void *arg)
         bool pressed = (gpio_get_level(BOARD_HAL_WAKEUP_KEY) == 0);
 
         // Ignore the press that woke the device until it has been released once,
-        // so a still-held wake press doesn't immediately re-sleep the device.
+        // so a still-held wake press doesn't immediately trigger a gesture.
         if (!released_since_boot) {
             if (!pressed) {
                 released_since_boot = true;
@@ -208,21 +244,30 @@ static void button_monitor_task(void *arg)
         if (pressed) {
             if (press_start == 0) {
                 press_start = esp_timer_get_time();
-            } else if (esp_timer_get_time() - press_start >= HOLD_TO_SLEEP_US) {
-                ESP_LOGI(TAG, "Wake button held >=2s, entering deep sleep");
-                board_hal_led_set(BOARD_HAL_LED_ACTIVITY, true);
-                vTaskDelay(pdMS_TO_TICKS(150));
-                board_hal_led_set(BOARD_HAL_LED_ACTIVITY, false);
-                // Wait for release before sleeping, otherwise EXT1 (ALL_LOW)
-                // sees the still-pressed (low) pin and wakes us up immediately.
+                hold_fired = false;
+            } else if (!hold_fired && esp_timer_get_time() - press_start >= HOLD_US) {
+                // Hold threshold crossed while still pressed. Wait for release
+                // first (a still-low pin would re-wake EXT1 if the action sleeps)
+                // then run the hold action. Mark fired so release isn't also
+                // counted as a long press.
+                hold_fired = true;
                 while (gpio_get_level(BOARD_HAL_WAKEUP_KEY) == 0) {
                     vTaskDelay(pdMS_TO_TICKS(50));
                 }
                 vTaskDelay(pdMS_TO_TICKS(100));  // debounce after release
-                power_manager_enter_sleep();
+                dispatch_button_action(config_manager_get_button_action_hold());
+                press_start = 0;
             }
         } else {
+            // Released — classify by how long it was held (unless hold already fired).
+            if (press_start != 0 && !hold_fired) {
+                int64_t dur = esp_timer_get_time() - press_start;
+                const char *action = (dur >= LONG_US) ? config_manager_get_button_action_long()
+                                                       : config_manager_get_button_action_short();
+                dispatch_button_action(action);
+            }
             press_start = 0;
+            hold_fired = false;
         }
     }
 }

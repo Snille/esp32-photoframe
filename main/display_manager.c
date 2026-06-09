@@ -16,6 +16,7 @@
 #include "config.h"
 #include "config_manager.h"
 #include "epaper.h"
+#include "esp_app_desc.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_random.h"
@@ -25,6 +26,7 @@
 #include "nvs.h"
 #include "storage.h"
 #include "utils.h"
+#include "wifi_manager.h"
 
 static const char *TAG = "display_manager";
 #define NVS_LAST_IMAGE_KEY "last_image"
@@ -355,6 +357,79 @@ esp_err_t display_manager_show_calibration(void)
     xSemaphoreGive(display_mutex);
 
     ESP_LOGI(TAG, "Calibration pattern displayed successfully");
+    return ESP_OK;
+}
+
+// Draw `text` at (x, y), wrapping to lines of at most `max_chars` glyphs.
+// Returns the y position just below the last line drawn.
+static int info_draw_wrapped(int x, int y, const char *text, int max_chars, int line_h)
+{
+    int len = (int) strlen(text);
+    int pos = 0;
+    if (max_chars < 1) {
+        max_chars = 1;
+    }
+    do {
+        char line[48];
+        int n = len - pos;
+        if (n > max_chars) {
+            n = max_chars;
+        }
+        if (n > (int) sizeof(line) - 1) {
+            n = (int) sizeof(line) - 1;
+        }
+        memcpy(line, text + pos, n);
+        line[n] = '\0';
+        Paint_DrawString_EN(x, y, line, &Font24, EPD_7IN3E_BLACK, EPD_7IN3E_WHITE);
+        y += line_h;
+        pos += n;
+    } while (pos < len);
+    return y;
+}
+
+esp_err_t display_manager_show_info_screen(void)
+{
+    if (xSemaphoreTake(display_mutex, pdMS_TO_TICKS(5000)) != pdTRUE) {
+        ESP_LOGE(TAG, "Failed to acquire display mutex for info screen");
+        return ESP_FAIL;
+    }
+
+    ESP_LOGI(TAG, "Displaying info screen");
+
+    display_manager_initialize_paint();
+    Paint_Clear(EPD_7IN3E_WHITE);
+
+    const int margin = 10;
+    const int char_w = Font24.Width;
+    const int line_h = Font24.Height + 6;
+    const int max_chars = (Paint.Width - 2 * margin) / (char_w > 0 ? char_w : 1);
+    int x = margin;
+    int y = margin;
+
+    // Title
+    Paint_DrawString_EN(x, y, "PhotoFrame Info", &Font24, EPD_7IN3E_RED, EPD_7IN3E_WHITE);
+    y += line_h + 8;
+
+    char ip[20] = "(no IP)";
+    wifi_manager_get_ip(ip, sizeof(ip));
+    const esp_app_desc_t *app = esp_app_get_description();
+
+    char buf[320];
+    snprintf(buf, sizeof(buf), "Name: %s", config_manager_get_device_name());
+    y = info_draw_wrapped(x, y, buf, max_chars, line_h);
+    snprintf(buf, sizeof(buf), "IP: %s", ip);
+    y = info_draw_wrapped(x, y, buf, max_chars, line_h);
+    snprintf(buf, sizeof(buf), "WiFi: %s", config_manager_get_wifi_ssid());
+    y = info_draw_wrapped(x, y, buf, max_chars, line_h);
+    snprintf(buf, sizeof(buf), "Server: %s", config_manager_get_image_url());
+    y = info_draw_wrapped(x, y, buf, max_chars, line_h);
+    snprintf(buf, sizeof(buf), "Version: %s", app ? app->version : "?");
+    y = info_draw_wrapped(x, y, buf, max_chars, line_h);
+
+    epaper_display(epd_image_buffer);
+
+    xSemaphoreGive(display_mutex);
+    ESP_LOGI(TAG, "Info screen displayed successfully");
     return ESP_OK;
 }
 

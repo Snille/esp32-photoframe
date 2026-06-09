@@ -131,6 +131,8 @@ Buttons behave differently depending on whether the device is awake (web UI acce
 | **Rotate** | Rotates to the next image |
 | **Clear** | Clears the display to white |
 
+**Configurable wake-button gestures** (single-button boards such as the FireBeetle 2 ESP32-E): the wake button's awake behaviour is configurable per gesture from the web UI (frame and server) — **short press** (<2s), **long press** (2–5s) and **hold** (≥5s) each map to an action: next image, go to deep sleep, toggle deep sleep on/off, or show an on-screen info card (name, IP, Wi-Fi SSID, server URL, firmware version). Defaults: short → next image, long → sleep, hold → info screen. Waking from deep sleep is always implicit (any press wakes the frame first).
+
 ### 💾 Internal Flash Storage
 Boards with larger flash chips (XIAO EE02/EE04, reTerminal E1002) use internal flash as persistent storage via LittleFS. On the reTerminal, the SD card takes priority when inserted; internal flash serves as a fallback. The Waveshare board does not have internal flash storage due to its 16MB flash being fully allocated to OTA partitions.
 

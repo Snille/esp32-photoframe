@@ -13,6 +13,10 @@ esp_err_t display_manager_show_image(const char *filename);
 esp_err_t display_manager_show_calibration(void);
 esp_err_t display_manager_clear(void);
 esp_err_t display_manager_show_setup_screen(void);
+
+// Render a local info screen (device name, IP, WiFi SSID, server URL, firmware
+// version) to the e-paper. Used by the configurable button "info_screen" action.
+esp_err_t display_manager_show_info_screen(void);
 bool display_manager_is_busy(void);
 void display_manager_rotate_from_storage(void);
 const char *display_manager_get_current_image(void);

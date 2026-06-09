@@ -56,6 +56,11 @@ static char ai_prompt[AI_PROMPT_MAX_LEN] = {0};
 // Power
 static bool deep_sleep_enabled = true;  // Enabled by default
 
+// Button gestures → actions
+static char btn_action_short[BUTTON_ACTION_MAX_LEN] = DEFAULT_BTN_SHORT_ACTION;
+static char btn_action_long[BUTTON_ACTION_MAX_LEN] = DEFAULT_BTN_LONG_ACTION;
+static char btn_action_hold[BUTTON_ACTION_MAX_LEN] = DEFAULT_BTN_HOLD_ACTION;
+
 // Config sync
 static int64_t config_last_updated = 0;
 
@@ -284,6 +289,20 @@ esp_err_t config_manager_init(void)
             deep_sleep_enabled = (deep_sleep_val != 0);
             ESP_LOGI(TAG, "Loaded deep sleep setting from NVS: %s",
                      deep_sleep_enabled ? "enabled" : "disabled");
+        }
+
+        // Button gestures → actions (fall back to compiled defaults if unset)
+        size_t btn_len = BUTTON_ACTION_MAX_LEN;
+        if (nvs_get_str(nvs_handle, NVS_BTN_SHORT_KEY, btn_action_short, &btn_len) == ESP_OK) {
+            ESP_LOGI(TAG, "Loaded short-press action: %s", btn_action_short);
+        }
+        btn_len = BUTTON_ACTION_MAX_LEN;
+        if (nvs_get_str(nvs_handle, NVS_BTN_LONG_KEY, btn_action_long, &btn_len) == ESP_OK) {
+            ESP_LOGI(TAG, "Loaded long-press action: %s", btn_action_long);
+        }
+        btn_len = BUTTON_ACTION_MAX_LEN;
+        if (nvs_get_str(nvs_handle, NVS_BTN_HOLD_KEY, btn_action_hold, &btn_len) == ESP_OK) {
+            ESP_LOGI(TAG, "Loaded hold action: %s", btn_action_hold);
         }
 
         // Config sync timestamp
@@ -1000,6 +1019,56 @@ void config_manager_set_deep_sleep_enabled(bool enabled)
 bool config_manager_get_deep_sleep_enabled(void)
 {
     return deep_sleep_enabled;
+}
+
+// --- Button gestures → actions ---
+
+// Shared setter: copy + persist one gesture's action string.
+static void set_button_action(char *dst, const char *key, const char *action)
+{
+    if (action == NULL) {
+        return;
+    }
+    strncpy(dst, action, BUTTON_ACTION_MAX_LEN - 1);
+    dst[BUTTON_ACTION_MAX_LEN - 1] = '\0';
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_str(nvs_handle, key, dst);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+    ESP_LOGI(TAG, "Button action %s set to %s", key, dst);
+}
+
+void config_manager_set_button_action_short(const char *action)
+{
+    set_button_action(btn_action_short, NVS_BTN_SHORT_KEY, action);
+}
+
+const char *config_manager_get_button_action_short(void)
+{
+    return btn_action_short;
+}
+
+void config_manager_set_button_action_long(const char *action)
+{
+    set_button_action(btn_action_long, NVS_BTN_LONG_KEY, action);
+}
+
+const char *config_manager_get_button_action_long(void)
+{
+    return btn_action_long;
+}
+
+void config_manager_set_button_action_hold(const char *action)
+{
+    set_button_action(btn_action_hold, NVS_BTN_HOLD_KEY, action);
+}
+
+const char *config_manager_get_button_action_hold(void)
+{
+    return btn_action_hold;
 }
 
 void config_manager_set_config_last_updated(int64_t timestamp)

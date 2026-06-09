@@ -126,44 +126,18 @@ static bool connect_to_wifi_with_timeout(int timeout_seconds)
 
 static void button_task(void *arg)
 {
-    bool last_boot_state = 1;  // Default distinct from current to avoid triggers if NC
-    if (BOARD_HAL_WAKEUP_KEY != GPIO_NUM_NC) {
-        last_boot_state = gpio_get_level(BOARD_HAL_WAKEUP_KEY);
-    }
-
+    // The wake button (BOARD_HAL_WAKEUP_KEY) is handled by the configurable
+    // gesture detector in power_manager.c (button_monitor_task). This task
+    // only services dedicated ROTATE/CLEAR buttons on boards that have them.
     bool last_key_state = 1;
     if (BOARD_HAL_ROTATE_KEY != GPIO_NUM_NC) {
         last_key_state = gpio_get_level(BOARD_HAL_ROTATE_KEY);
     }
 
-    bool current_boot_state, current_key_state;
-    uint32_t boot_press_time = 0;
+    bool current_key_state;
     uint32_t key_press_time = 0;
 
     while (1) {
-        if (BOARD_HAL_WAKEUP_KEY != GPIO_NUM_NC) {
-            current_boot_state = gpio_get_level(BOARD_HAL_WAKEUP_KEY);
-
-            // Handle BOOT button
-            if (current_boot_state == 0 && last_boot_state == 1) {
-                boot_press_time = xTaskGetTickCount();
-            } else if (current_boot_state == 1 && last_boot_state == 0) {
-                uint32_t duration = (xTaskGetTickCount() - boot_press_time) * portTICK_PERIOD_MS;
-
-                if (duration > 50 && duration < 3000) {
-                    // A short press while awake advances to the next image. On
-                    // boards where this is the only button it doubles as the
-                    // rotate key (wake-from-sleep presses are released before
-                    // this task starts, so they don't trigger a rotation here).
-                    ESP_LOGI(TAG, "Wake button pressed while awake, triggering rotation");
-                    power_manager_reset_sleep_timer();
-                    trigger_image_rotation();
-                    ha_notify_update();
-                }
-            }
-            last_boot_state = current_boot_state;
-        }
-
         if (BOARD_HAL_ROTATE_KEY != GPIO_NUM_NC) {
             current_key_state = gpio_get_level(BOARD_HAL_ROTATE_KEY);
 
