@@ -659,6 +659,17 @@ esp_err_t fetch_and_save_image_from_url(const char *url, char *saved_image_path,
         snprintf(batt_str, sizeof(batt_str), "%i", board_hal_get_battery_percent());
         esp_http_client_set_header(client, "X-Battery-Percentage", batt_str);
 
+        // Also report the raw battery voltage (mV). The server uses it for a
+        // finer drain estimate than the coarse percentage (LiPo voltage moves
+        // continuously). Only send a plausible reading; 0/negative means the
+        // board can't measure it.
+        int batt_mv = board_hal_get_battery_voltage();
+        if (batt_mv > 0) {
+            char batt_mv_str[8];
+            snprintf(batt_mv_str, sizeof(batt_mv_str), "%i", batt_mv);
+            esp_http_client_set_header(client, "X-Battery-Voltage", batt_mv_str);
+        }
+
         // Instrument the internal-RAM margin right before the request. On
         // SRAM-only boards this is the figure that decides whether an HTTPS
         // handshake (~16 KB) can be satisfied alongside the permanently-held
