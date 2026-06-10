@@ -11,6 +11,11 @@ tag keeps them out of the upstream `v*` CI that only builds the ESP32-S3 boards;
 the FireBeetle bin is built manually — classic ESP32, ESP-IDF v5.3.3, app at
 `0x10000`, 4 MB / dio / 40 MHz).
 
+## 2.9.2
+
+### Added
+- **Reports battery voltage** (`X-Battery-Voltage` header, mV) alongside the existing percentage on each image fetch. The frame already measures it (GPIO34) — no new hardware. The server uses the raw voltage for a finer battery-drain estimate than the coarse integer percentage (LiPo voltage moves continuously). Sent only when a plausible reading is available.
+
 ## 2.9.1
 
 ### Fixed
