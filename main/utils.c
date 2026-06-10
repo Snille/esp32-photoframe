@@ -665,7 +665,7 @@ esp_err_t fetch_and_save_image_from_url(const char *url, char *saved_image_path,
         // board can't measure it.
         int batt_mv = board_hal_get_battery_voltage();
         if (batt_mv > 0) {
-            char batt_mv_str[8];
+            char batt_mv_str[12];
             snprintf(batt_mv_str, sizeof(batt_mv_str), "%i", batt_mv);
             esp_http_client_set_header(client, "X-Battery-Voltage", batt_mv_str);
         }
