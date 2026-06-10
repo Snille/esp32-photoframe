@@ -55,10 +55,27 @@ static wakeup_source_t wakeup_source = WAKEUP_SOURCE_NONE;
 static int64_t next_rotation_time = 0;  // Use absolute time for rotation
 static uint64_t ext1_wakeup_pin_mask = 0;
 
+// Heavy button actions (next_image / info_screen) do an HTTP fetch + image
+// decode + display refresh that needs far more stack than button_monitor_task
+// has (2560 B). Running them there overflows the stack and reboots the device.
+// btn_monitor instead hands them to rotation_timer_task (16 KB stack) via this
+// one-slot mailbox; light actions still run inline on the button task.
+static volatile bool pending_button_action_ready = false;
+static char pending_button_action_buf[BUTTON_ACTION_MAX_LEN];
+
+static void execute_button_action(const char *action);
+
 static void rotation_timer_task(void *arg)
 {
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(1000));
+
+        // Run a heavy button action deferred from button_monitor_task. This
+        // runs on the rotation task's 16 KB stack, regardless of auto-rotate.
+        if (pending_button_action_ready) {
+            pending_button_action_ready = false;
+            execute_button_action(pending_button_action_buf);
+        }
 
         // Run active rotation when:
         // 1. USB is connected (device stays awake), OR
@@ -174,10 +191,11 @@ static void sleep_timer_task(void *arg)
     }
 }
 
-// Run the configured action for a button gesture. Action ids mirror the
-// firmware config / WebUI: "none", "next_image", "sleep", "toggle_deep_sleep",
-// "info_screen". Called only while awake (after the wake press is released).
-static void dispatch_button_action(const char *action)
+// Carry out a button action. Action ids mirror the firmware config / WebUI:
+// "none", "next_image", "sleep", "toggle_deep_sleep", "info_screen". The heavy
+// branches (next_image, info_screen) must run on a big-stack task — see
+// dispatch_button_action, which is what callers use.
+static void execute_button_action(const char *action)
 {
     if (action == NULL || strcmp(action, "none") == 0) {
         return;
@@ -201,6 +219,23 @@ static void dispatch_button_action(const char *action)
         display_manager_show_info_screen();
     } else {
         ESP_LOGW(TAG, "Unknown button action: %s", action);
+    }
+}
+
+// Called from button_monitor_task (2560 B stack). next_image / info_screen are
+// too stack-heavy to run here (they reboot the device), so hand them to
+// rotation_timer_task; everything else runs inline.
+static void dispatch_button_action(const char *action)
+{
+    if (action == NULL || strcmp(action, "none") == 0) {
+        return;
+    }
+    if (strcmp(action, "next_image") == 0 || strcmp(action, "info_screen") == 0) {
+        strncpy(pending_button_action_buf, action, sizeof(pending_button_action_buf) - 1);
+        pending_button_action_buf[sizeof(pending_button_action_buf) - 1] = '\0';
+        pending_button_action_ready = true;
+    } else {
+        execute_button_action(action);
     }
 }
 
