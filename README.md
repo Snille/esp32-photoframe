@@ -1,6 +1,6 @@
 # ESP32 PhotoFrame
 
-A modern, feature-rich firmware for ESP32-based e-paper photo frames (currently supporting **Waveshare PhotoPainter**, **Seeed Studio XIAO EE02/EE04**, and **Seeed Studio reTerminal E1002**). This firmware replaces stock firmware with a powerful RESTful API, web interface, and **significantly better image quality**.
+A modern, feature-rich firmware for ESP32-based e-paper photo frames (currently supporting **Waveshare PhotoPainter**, **Seeed Studio XIAO EE02/EE04**, **Seeed Studio reTerminal E1002**, and the **DFRobot FireBeetle 2 ESP32-E** driving a **Waveshare 4" Spectra 6** panel). This firmware replaces stock firmware with a powerful RESTful API, web interface, and **significantly better image quality**.
 
 ![PhotoFrame](.img/esp32-photoframe.png)
 
@@ -143,8 +143,11 @@ Configure your API keys in **Settings > AI Generation**.
 | [Seeed Studio XIAO EE02](https://www.seeedstudio.com/XIAO-ePaper-DIY-Kit-EE02-for-13-3-Spectratm-6-E-Ink.html) | 13.3" 6-color | Internal flash | `seeedstudio_xiao_ee02` |
 | [Seeed Studio XIAO EE04](https://www.seeedstudio.com/XIAO-ePaper-EE04-DIY-Bundle-Kit.html) | 7.3" 6-color | Internal flash | `seeedstudio_xiao_ee04` |
 | [Seeed Studio reTerminal E1002](https://www.seeedstudio.com/reTerminal-E1002-p-6533.html) | 7.3" 6-color | SD card (SPI) + Internal flash | `seeedstudio_reterminal_e1002` |
+| [DFRobot FireBeetle 2 ESP32-E](https://www.dfrobot.com/product-2195.html) ([wiki](https://wiki.dfrobot.com/dfr0654/)) | [Waveshare 4" Spectra 6](https://www.waveshare.com/4inch-e-paper-hat-plus-e.htm) 6-color (400×600) | None — server-streamed | `dfrobot_firebeetle_esp32e` |
 
 The reTerminal E1002 also includes a SHT40 temperature/humidity sensor, PCF8563 RTC, and battery monitoring.
+
+**About the FireBeetle 2 ESP32-E build:** unlike the other boards this is a *classic* ESP32 (not S3) with **4 MB flash and no PSRAM**. It has no local image storage — the 4 MB flash holds a single app partition — so it relies entirely on **URL rotation / server push**, receiving uncompressed raw-EPD frames so the SRAM-only chip doesn't run out of memory decoding images. Battery is monitored on GPIO34, it wakes on a single button (see [configurable wake-button gestures](#button-functions)), and because it has no PSRAM it **cannot fetch over `https://`** (the TLS handshake won't fit in RAM alongside the 120 KB framebuffer) — use a plain `http://` image URL on the LAN, or a reverse proxy. The firmware reports this via the `system-info` `https_supported` flag so the web UIs warn against `https://` URLs on this board.
 
 ### Button Functions
 
@@ -152,11 +155,13 @@ Buttons behave differently depending on whether the device is awake (web UI acce
 
 **When in deep sleep:**
 
-| Button | Waveshare PhotoPainter | XIAO EE02 / EE04 | reTerminal E1002 |
-|--------|----------------------|-------------------|------------------|
-| **Wake** | BOOT button | Button 3 | Green button |
-| **Rotate** | KEY button | Button 1 | Left button |
-| **Clear** | N/A | Button 2 | Right button |
+| Button | Waveshare PhotoPainter | XIAO EE02 / EE04 | reTerminal E1002 | FireBeetle 2 ESP32-E |
+|--------|----------------------|-------------------|------------------|----------------------|
+| **Wake** | BOOT button | Button 3 | Green button | Wake button (single) |
+| **Rotate** | KEY button | Button 1 | Left button | (single button)¹ |
+| **Clear** | N/A | Button 2 | Right button | (single button)¹ |
+
+¹ The FireBeetle has a single wake button; rotate/clear/info are reached through its **configurable wake-button gestures** (see below) rather than dedicated buttons.
 
 - **Wake**: Wakes the device and starts the web UI / HTTP server (stays awake)
 - **Rotate**: Wakes the device, rotates to the next image, then goes back to sleep
@@ -172,7 +177,7 @@ Buttons behave differently depending on whether the device is awake (web UI acce
 **Configurable wake-button gestures** (single-button boards such as the FireBeetle 2 ESP32-E): the wake button's awake behaviour is configurable per gesture from the web UI (frame and server) — **short press** (<2s), **long press** (2–5s) and **hold** (≥5s) each map to an action: next image, go to deep sleep, toggle deep sleep on/off, or show an on-screen info card (name, IP, Wi-Fi SSID, server URL, firmware version). Defaults: short → next image, long → sleep, hold → info screen. Waking from deep sleep is always implicit (any press wakes the frame first).
 
 ### 💾 Internal Flash Storage
-Boards with larger flash chips (XIAO EE02/EE04, reTerminal E1002) use internal flash as persistent storage via LittleFS. On the reTerminal, the SD card takes priority when inserted; internal flash serves as a fallback. The Waveshare board does not have internal flash storage due to its 16MB flash being fully allocated to OTA partitions.
+Boards with larger flash chips (XIAO EE02/EE04, reTerminal E1002) use internal flash as persistent storage via LittleFS. On the reTerminal, the SD card takes priority when inserted; internal flash serves as a fallback. The Waveshare board does not have internal flash storage due to its 16MB flash being fully allocated to OTA partitions. The **FireBeetle 2 ESP32-E** has no local image storage at all (its 4 MB flash is a single app partition) — it fetches every image on demand via URL rotation / server push.
 
 ### Known Issues 🚧
 
@@ -185,15 +190,23 @@ Boards with larger flash chips (XIAO EE02/EE04, reTerminal E1002) use internal f
 
 **[🌐 Flash from Browser](https://aitjcize.github.io/esp32-photoframe/#flash)** - Chrome/Edge/Opera required
 
+> **Note:** the browser flasher and the upstream CI releases cover the **ESP32-S3** boards only. The **FireBeetle 2 ESP32-E** is a classic ESP32 built manually — its flashable factory bin is published on this fork's [Releases](https://github.com/Snille/esp32-photoframe/releases) under tags named `firebeetle-v<version>` (e.g. `firebeetle-v2.9.1`). Flash it with esptool as shown below.
+
 ### Manual Flash
 
-Download from [Releases](https://github.com/aitjcize/esp32-photoframe/releases):
+Download from [Releases](https://github.com/aitjcize/esp32-photoframe/releases) (or the [Snille fork Releases](https://github.com/Snille/esp32-photoframe/releases) for the FireBeetle bin):
 
 ```bash
+# ESP32-S3 boards (Waveshare PhotoPainter, XIAO EE02/EE04, reTerminal E1002)
 esptool.py --chip esp32s3 --port /dev/ttyUSB0 --baud 921600 write_flash 0x0 photoframe-firmware-<board>-merged.bin
+
+# DFRobot FireBeetle 2 ESP32-E (classic ESP32)
+esptool.py --chip esp32 --port /dev/ttyUSB0 --baud 460800 write_flash 0x0 photoframe-firmware-dfrobot_firebeetle_esp32e-merged.bin
 ```
 
-**Device not detected?** Hold BOOT button + press PWR to enter download mode.
+The FireBeetle's merged bin flashes at `0x0` and leaves NVS (Wi-Fi config) untouched, so a reflash keeps your credentials.
+
+**Device not detected?** Hold BOOT button + press PWR to enter download mode. On the FireBeetle, flashing is most reliable with the board **awake** (press the wake button first) and hands off the buttons during flashing.
 
 **Build from source:**
 
@@ -212,9 +225,14 @@ We provide a `build.py` helper script to simplify building for different boards.
 # Build for Seeed Studio reTerminal E1002
 ./build.py --board seeedstudio_reterminal_e1002
 
+# Build for DFRobot FireBeetle 2 ESP32-E (classic ESP32, ESP-IDF v5.3.3)
+./build.py --board dfrobot_firebeetle_esp32e
+
 # Flash the firmware
 idf.py -p /dev/ttyUSB0 flash monitor
 ```
+
+> The ESP32-S3 boards build against ESP-IDF v6.0; the **FireBeetle 2 ESP32-E** target builds against **ESP-IDF v5.3.3** (classic ESP32, app at `0x10000`, 4 MB / dio / 40 MHz). See [docs/DEV.md](docs/DEV.md) for the per-board toolchain and the merged-bin recipe.
 
 For more details, see [DEV.md](docs/DEV.md)
 
