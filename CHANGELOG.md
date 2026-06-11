@@ -11,6 +11,11 @@ tag keeps them out of the upstream `v*` CI that only builds the ESP32-S3 boards;
 the FireBeetle bin is built manually — classic ESP32, ESP-IDF v5.3.3, app at
 `0x10000`, 4 MB / dio / 40 MHz).
 
+## 2.9.3
+
+### Changed
+- **Theme-following logo in the device WebUI**: the app-bar logo now follows the active theme (its shell, sun and horizon take the theme's primary colour) with a light-blue sky, instead of a fixed terracotta mark. Cosmetic; no functional firmware change.
+
 ## 2.9.2
 
 ### Added
