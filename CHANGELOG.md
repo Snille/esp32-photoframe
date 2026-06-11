@@ -11,6 +11,12 @@ tag keeps them out of the upstream `v*` CI that only builds the ESP32-S3 boards;
 the FireBeetle bin is built manually — classic ESP32, ESP-IDF v5.3.3, app at
 `0x10000`, 4 MB / dio / 40 MHz).
 
+## 2.9.4
+
+### Fixed
+- **Processing settings can be pushed to the frame again.** The `/api/settings/processing` POST handler allocated the request buffer from PSRAM (`MALLOC_CAP_SPIRAM`), but this board has no usable PSRAM — every POST returned 500, so the server's direct-push of processing settings (and the frame's own WebUI "save processing") silently failed. It now uses the internal heap like the colour-palette handler beside it; the body is a tiny JSON blob.
+- **Processing-preset detection in the device WebUI tolerates float drift.** Values loaded from the frame's 32-bit-float NVS come back slightly off (e.g. `1.4` → `1.4000000953…`), which an exact comparison mislabelled as "Custom". Detection now compares numbers with a small epsilon, so a stored preset is recognised correctly.
+
 ## 2.9.3
 
 ### Changed

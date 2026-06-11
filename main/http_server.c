@@ -2427,7 +2427,11 @@ static esp_err_t processing_settings_handler(httpd_req_t *req)
         return ESP_OK;
 
     } else if (req->method == HTTP_POST) {
-        char *buf = heap_caps_malloc(req->content_len + 1, MALLOC_CAP_SPIRAM);
+        // Plain heap, not SPIRAM: this board has no usable PSRAM, so a
+        // MALLOC_CAP_SPIRAM allocation returns NULL and every POST 500s. The
+        // request body is a tiny JSON blob — internal heap is plenty. Matches
+        // the color-palette handler below.
+        char *buf = malloc(req->content_len + 1);
         if (!buf) {
             httpd_resp_send_500(req);
             return ESP_FAIL;
@@ -2435,14 +2439,14 @@ static esp_err_t processing_settings_handler(httpd_req_t *req)
 
         int ret = httpd_req_recv(req, buf, req->content_len);
         if (ret <= 0) {
-            heap_caps_free(buf);
+            free(buf);
             httpd_resp_send_500(req);
             return ESP_FAIL;
         }
         buf[ret] = '\0';
 
         cJSON *json = cJSON_Parse(buf);
-        heap_caps_free(buf);
+        free(buf);
 
         if (!json) {
             httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");

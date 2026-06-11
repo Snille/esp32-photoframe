@@ -118,7 +118,17 @@ function matchesPreset(presetName) {
   if (!target) return false;
   const current = params.value;
   for (const key of presetKeys) {
-    if (key in target && current[key] !== target[key]) return false;
+    if (!(key in target)) continue;
+    const a = current[key];
+    const b = target[key];
+    // Numeric fields drift through the device's float32 NVS round-trip, so an
+    // exact !== would mislabel a loaded preset as "Custom". Compare with a
+    // small epsilon — preset values differ by ≥0.1, far above any drift.
+    if (typeof a === "number" && typeof b === "number") {
+      if (Math.abs(a - b) >= 1e-3) return false;
+    } else if (a !== b) {
+      return false;
+    }
   }
   return true;
 }
