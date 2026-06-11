@@ -47,9 +47,11 @@ defineProps({ size: { type: [Number, String], default: 40 } });
 // Unique gradient id so multiple logos on a page don't clash.
 const shellId = `pf-shell-${Math.random().toString(36).slice(2, 8)}`;
 
-// Warm constants — the photo inside the frame stays warm for contrast.
+// Constants for the photo inside the frame: a warm cream frame border and a
+// light-blue sky (kept constant across themes — a sky reads as blue regardless
+// of the accent colour). The themed shell/sun/hills provide the theme colour.
 const frameBody = "#faf5eb";
-const picBg = "#f4c896";
+const picBg = "#bfe3f5";
 
 const clamp = (n) => Math.max(0, Math.min(255, n));
 const hexToRgb = (hex) => {
