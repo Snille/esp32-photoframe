@@ -3,6 +3,7 @@ import { ref, computed, watch, onMounted } from "vue";
 import { useTheme } from "vuetify";
 import { useAppStore, useSettingsStore } from "../stores";
 import { themeOptions, THEME_STORAGE_KEY, DEFAULT_THEME } from "../plugins/vuetify";
+import AppLogo from "./AppLogo.vue";
 
 const appStore = useAppStore();
 const settingsStore = useSettingsStore();
@@ -58,7 +59,7 @@ function getBatteryColor(level) {
 <template>
   <v-app-bar color="primary" density="comfortable">
     <template #prepend>
-      <v-img src="/icon.svg" alt="PhotoFrame" width="40" height="40" class="ml-2" />
+      <AppLogo :size="40" class="ml-2" />
     </template>
 
     <v-app-bar-title class="ml-4">{{ deviceTitle }}</v-app-bar-title>
