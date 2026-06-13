@@ -11,6 +11,11 @@ tag keeps them out of the upstream `v*` CI that only builds the ESP32-S3 boards;
 the FireBeetle bin is built manually — classic ESP32, ESP-IDF v5.3.3, app at
 `0x10000`, 4 MB / dio / 40 MHz).
 
+## 2.9.5
+
+### Added
+- **Reports the wake reason** (`X-Wake-Reason` header) on each image fetch: `timer` (auto-rotate timer wake), `button` (wake button), or `boot` (cold boot / reset). The server surfaces this as the Home Assistant **"Last Trigger"** sensor so automations can tell *why* the frame changed image. No new hardware; derived from the existing deep-sleep wakeup cause.
+
 ## 2.9.4
 
 ### Fixed

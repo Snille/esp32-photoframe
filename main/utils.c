@@ -598,6 +598,26 @@ esp_err_t fetch_and_save_image_from_url(const char *url, char *saved_image_path,
             config_manager_get_display_orientation() == DISPLAY_ORIENTATION_LANDSCAPE ? "landscape"
                                                                                       : "portrait");
 
+        // Report why the frame woke so the server (and Home Assistant) can show
+        // what triggered this image change: a timer auto-rotate, a wake-button
+        // press, or a cold boot/reset.
+        const char *wake_reason;
+        switch (power_manager_get_wakeup_source()) {
+            case WAKEUP_SOURCE_TIMER:
+                wake_reason = "timer";
+                break;
+            case WAKEUP_SOURCE_BOOT_BUTTON:
+            case WAKEUP_SOURCE_ROTATE_BUTTON:
+            case WAKEUP_SOURCE_CLEAR_BUTTON:
+            case WAKEUP_SOURCE_EXT1_UNKNOWN:
+                wake_reason = "button";
+                break;
+            default:
+                wake_reason = "boot";
+                break;
+        }
+        esp_http_client_set_header(client, "X-Wake-Reason", wake_reason);
+
         // SRAM-only boards request uncompressed display-ready EPD bytes to avoid
         // zlib/libpng allocations after the display buffer has been reserved.
         if (!storage_has_persistent_storage()) {

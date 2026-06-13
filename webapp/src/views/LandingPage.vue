@@ -548,6 +548,7 @@ function scrollTo(id) {
                   (selectedVersion === 'stable' ? 'manifest.json' : 'manifest-dev.json')
                 "
               >
+                <!-- eslint-disable-next-line vue/no-deprecated-slot-attribute -- esp-web-install-button is a real web component; this is its native HTML slot, not a Vue slot, so v-slot would break it. -->
                 <button slot="activate" class="btn btn-primary btn-large">
                   ⚡ Install firmware
                   <span class="btn-arrow" aria-hidden="true">→</span>
