@@ -9,6 +9,8 @@ const appStore = useAppStore();
 const settingsStore = useSettingsStore();
 const sleepDialog = ref(false);
 const rotating = ref(false);
+const skipping = ref(false);
+const skipSteps = ref(1);
 
 const theme = useTheme();
 const currentTheme = ref(DEFAULT_THEME);
@@ -49,6 +51,13 @@ async function handleRotate() {
   rotating.value = false;
 }
 
+async function handleSkip(steps) {
+  if (!steps) return;
+  skipping.value = true;
+  await appStore.skipQueue(steps);
+  skipping.value = false;
+}
+
 function getBatteryColor(level) {
   if (level < 20) return "error";
   if (level < 50) return "warning";
@@ -82,6 +91,49 @@ function getBatteryColor(level) {
             <v-list-item-title>{{ opt.title }}</v-list-item-title>
           </v-list-item>
         </v-list>
+      </v-menu>
+
+      <!-- Skip in Queue Menu -->
+      <v-menu :close-on-content-click="false">
+        <template #activator="{ props }">
+          <v-btn icon class="mr-2" title="Skip in queue" v-bind="props">
+            <v-icon>mdi-debug-step-over</v-icon>
+          </v-btn>
+        </template>
+        <v-card class="pa-3" min-width="240">
+          <div class="text-subtitle-2">Skip in queue</div>
+          <div class="text-caption text-medium-emphasis mb-2" style="max-width: 220px">
+            One-time jump and refresh now — not a permanent setting (it won't
+            skip on every rotation).
+          </div>
+          <div class="d-flex align-center" style="gap: 8px">
+            <v-btn
+              icon="mdi-chevron-double-left"
+              size="small"
+              variant="tonal"
+              :loading="skipping"
+              title="Jump back"
+              @click="handleSkip(-Math.abs(skipSteps || 1))"
+            ></v-btn>
+            <v-text-field
+              v-model.number="skipSteps"
+              type="number"
+              min="1"
+              density="compact"
+              variant="outlined"
+              hide-details
+              style="max-width: 72px"
+            ></v-text-field>
+            <v-btn
+              icon="mdi-chevron-double-right"
+              size="small"
+              variant="tonal"
+              :loading="skipping"
+              title="Jump forward"
+              @click="handleSkip(Math.abs(skipSteps || 1))"
+            ></v-btn>
+          </div>
+        </v-card>
       </v-menu>
 
       <!-- Rotate Now Button -->

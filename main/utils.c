@@ -34,6 +34,16 @@ static const char *TAG = "utils";
 // Last image fetch error (transient, not persisted)
 static char last_fetch_error[256] = {0};
 
+// Pending rotation-queue skip, requested from the WebGUI. Sent to the server as
+// the X-Skip-Steps header on the next image fetch (positive = forward, negative
+// = back), then cleared — a one-shot so it only affects that single re-pull.
+static int pending_skip_steps = 0;
+
+void utils_set_pending_skip_steps(int steps)
+{
+    pending_skip_steps = steps;
+}
+
 void utils_set_last_fetch_error(const char *error)
 {
     if (error) {
@@ -617,6 +627,34 @@ esp_err_t fetch_and_save_image_from_url(const char *url, char *saved_image_path,
                 break;
         }
         esp_http_client_set_header(client, "X-Wake-Reason", wake_reason);
+
+        // Report exactly when the frame intends to wake next, so the server (and
+        // Home Assistant "Next Image Pull" sensor) shows the real time instead of
+        // re-deriving it. This value already accounts for clock-aligned wakes and
+        // the quiet-hours sleep schedule, which the server can't reliably replay.
+        // Only sent when auto-rotate is on (button-only frames have no timer wake)
+        // and the clock is NTP-synced (a plausible epoch), so the server never
+        // stores a garbage time from an unsynced frame.
+        if (config_manager_get_auto_rotate()) {
+            time_t wake_now;
+            time(&wake_now);
+            int secs_to_wake = get_seconds_until_next_wakeup();
+            if (wake_now > 1700000000 && secs_to_wake > 0) {
+                char next_wake_str[24];
+                snprintf(next_wake_str, sizeof(next_wake_str), "%lld",
+                         (long long) (wake_now + secs_to_wake));
+                esp_http_client_set_header(client, "X-Next-Wake-Time", next_wake_str);
+            }
+        }
+
+        // A WebGUI "skip" jumps the server's rotation queue on this very fetch.
+        // One-shot: send it once, then clear so normal rotations are unaffected.
+        if (pending_skip_steps != 0) {
+            char skip_str[12];
+            snprintf(skip_str, sizeof(skip_str), "%d", pending_skip_steps);
+            esp_http_client_set_header(client, "X-Skip-Steps", skip_str);
+            pending_skip_steps = 0;
+        }
 
         // SRAM-only boards request uncompressed display-ready EPD bytes to avoid
         // zlib/libpng allocations after the display buffer has been reserved.

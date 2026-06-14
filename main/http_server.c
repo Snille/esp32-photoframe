@@ -1552,6 +1552,56 @@ static esp_err_t rotate_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+static esp_err_t skip_handler(httpd_req_t *req)
+{
+    if (!system_ready) {
+        httpd_resp_set_status(req, HTTPD_503);
+        httpd_resp_sendstr(req, "System is still initializing");
+        return ESP_FAIL;
+    }
+
+    char buf[128];
+    int ret = httpd_req_recv(req, buf, sizeof(buf) - 1);
+    if (ret <= 0) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "No data received");
+        return ESP_FAIL;
+    }
+    buf[ret] = '\0';
+
+    cJSON *root = cJSON_Parse(buf);
+    if (!root) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
+    }
+    cJSON *steps_obj = cJSON_GetObjectItem(root, "steps");
+    if (!steps_obj || !cJSON_IsNumber(steps_obj)) {
+        cJSON_Delete(root);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing steps");
+        return ESP_FAIL;
+    }
+    int steps = steps_obj->valueint;
+    cJSON_Delete(root);
+
+    ESP_LOGI(TAG, "Queue skip requested via API: %d steps", steps);
+
+    // Queue the jump for the next fetch, then re-pull immediately so the new
+    // image shows right away while the frame is awake.
+    utils_set_pending_skip_steps(steps);
+    power_manager_reset_sleep_timer();
+    trigger_image_rotation();
+    ha_notify_update();
+
+    cJSON *response = cJSON_CreateObject();
+    cJSON_AddStringToObject(response, "status", "success");
+    cJSON_AddNumberToObject(response, "steps", steps);
+    char *json_str = cJSON_Print(response);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, json_str);
+    free(json_str);
+    cJSON_Delete(response);
+    return ESP_OK;
+}
+
 static esp_err_t current_image_handler(httpd_req_t *req)
 {
     if (!system_ready) {
@@ -2732,6 +2782,10 @@ esp_err_t http_server_init(void)
         httpd_uri_t rotate_uri = {
             .uri = "/api/rotate", .method = HTTP_POST, .handler = rotate_handler, .user_ctx = NULL};
         httpd_register_uri_handler(server, &rotate_uri);
+
+        httpd_uri_t skip_uri = {
+            .uri = "/api/skip", .method = HTTP_POST, .handler = skip_handler, .user_ctx = NULL};
+        httpd_register_uri_handler(server, &skip_uri);
 
         httpd_uri_t current_image_uri = {.uri = "/api/current_image",
                                          .method = HTTP_GET,

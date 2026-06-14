@@ -39,6 +39,10 @@ esp_err_t fetch_and_save_image_from_url(const char *url, char *saved_image_path,
 // Returns ESP_OK on success, error code on failure
 esp_err_t trigger_image_rotation(void);
 
+// Queue a rotation-queue skip for the next image fetch (sent as the X-Skip-Steps
+// header; positive = forward, negative = back). One-shot: cleared after one fetch.
+void utils_set_pending_skip_steps(int steps);
+
 // Create battery status JSON object with all battery fields
 // Returns cJSON object (caller must delete with cJSON_Delete)
 // Returns NULL on failure

@@ -228,6 +228,22 @@ export const useAppStore = defineStore("app", () => {
     }
   }
 
+  // Jump the server's rotation queue by `steps` (positive = forward, negative =
+  // back) and immediately re-pull so the jumped-to image shows right away.
+  async function skipQueue(steps) {
+    try {
+      const response = await fetch(`${API_BASE}/api/skip`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ steps }),
+      });
+      return response.ok;
+    } catch (error) {
+      console.error("Failed to skip:", error);
+      return false;
+    }
+  }
+
   async function loadSystemInfo() {
     loading.value.systemInfo = true;
     try {
@@ -265,6 +281,7 @@ export const useAppStore = defineStore("app", () => {
     displayImage,
     enterSleep,
     rotateNow,
+    skipQueue,
     loadSystemInfo,
   };
 });
