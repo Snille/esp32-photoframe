@@ -10,9 +10,9 @@ A modern, feature-rich firmware for ESP32-based e-paper photo frames (currently 
 - 🔋 **Smart Power Management**: Deep sleep mode for weeks of battery life, or always-on for Home Assistant
 - 📁 **Flexible Image Sources**: SD card rotation, URL-based fetching (weather, news, random images from image server)
 - 🌐 **Modern Web Interface**: Drag-and-drop uploads, gallery view, real-time battery status
-- 📱 **Mobile App**: [Companion app](https://github.com/aitjcize/esp32-photoframe-app) for WiFi provisioning, image processing, and AI generation
-- 🖼️ **Image Server**: [Companion server](https://github.com/aitjcize/esp32-photoframe-server) with Google Photos, Synology DS Photos, and Telegram Bot support
-- 🏠 **Home Assistant Ready**: [Companion integration](https://github.com/aitjcize/ha-esp32-photoframe) available
+- 📱 **Mobile App**: [Companion app](https://github.com/Snille/esp32-photoframe-app) for WiFi provisioning, image processing, and AI generation
+- 🖼️ **Image Server**: [Companion server](https://github.com/Snille/esp32-photoframe-server) with Google Photos, Synology DS Photos, and Telegram Bot support
+- 🏠 **Home Assistant intigration via MQTT**
 - 🔌 **RESTful API**: Full programmatic control ([API docs](docs/API.md))
 
 ## Ecosystem
@@ -21,9 +21,8 @@ This project has companion tools for different use cases:
 
 | Project | Description |
 |---------|-------------|
-| [**ha-esp32-photoframe**](https://github.com/aitjcize/ha-esp32-photoframe) | Home Assistant integration for control, monitoring, and automation |
-| [**esp32-photoframe-server**](https://github.com/aitjcize/esp32-photoframe-server) | Image server with text overlay, Google Photos, Synology DS Photos, and Telegram Bot integration. Can be run as a Home Assistant add-on. |
-| [**esp32-photoframe-app**](https://github.com/aitjcize/esp32-photoframe-app) | Mobile companion app for WiFi provisioning and device control. iOS: [App Store](https://apps.apple.com/tw/app/esp-frame/id6762510995?l=en-GB) (USD 2.99, to offset Apple's USD 99/yr developer fee). Android: still in closed testing — join the [testers Google Group](https://groups.google.com/g/esp32-photoframe-app-testers) first, then install via [Google Play](https://play.google.com/store/apps/details?id=com.aitjcize.espframe). |
+| [**esp32-photoframe-server**](https://github.com/Snille/esp32-photoframe-server) | Image server with text overlay, Google Photos, Synology DS Photos, and Telegram Bot integration. Can be run as a Home Assistant add-on. |
+| [**esp32-photoframe-app**](https://github.com/Snille/esp32-photoframe-app) | Mobile companion app for WiFi provisioning and device control (download the Android app from the server). |
 | [**epaper-image-convert**](https://github.com/aitjcize/epaper-image-convert) | CLI tool & npm library for e-paper image conversion with advanced dithering |
 
 ## Third Party Integrations
@@ -194,7 +193,7 @@ Boards with larger flash chips (XIAO EE02/EE04, reTerminal E1002) use internal f
 
 ### Manual Flash
 
-Download from [Releases](https://github.com/aitjcize/esp32-photoframe/releases) (or the [Snille fork Releases](https://github.com/Snille/esp32-photoframe/releases) for the FireBeetle bin):
+Download from [Snille fork Releases](https://github.com/Snille/esp32-photoframe/releases) for the FireBeetle bin):
 
 ```bash
 # ESP32-S3 boards (Waveshare PhotoPainter, XIAO EE02/EE04, reTerminal E1002)
@@ -271,7 +270,7 @@ The device supports two methods for WiFi provisioning:
 
 1. Install the ESP Frame companion app:
    - **iOS**: [App Store](https://apps.apple.com/tw/app/esp-frame/id6762510995?l=en-GB)
-   - **Android**: join the [testers Google Group](https://groups.google.com/g/esp32-photoframe-app-testers) (closed testing), then install from [Google Play](https://play.google.com/store/apps/details?id=com.aitjcize.espframe)
+   - **Android**: Download from the server and (sideload/install).
 2. Tap the "+" button on the home screen
 3. The app scans for PhotoFrame setup hotspots, connects automatically, and guides you through WiFi configuration
 
