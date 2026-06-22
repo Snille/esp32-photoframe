@@ -143,6 +143,15 @@ esp_err_t config_manager_init(void)
         if (nvs_get_i32(nvs_handle, NVS_ROTATE_INTERVAL_KEY, &stored_interval) == ESP_OK) {
             rotate_interval = stored_interval;
             ESP_LOGI(TAG, "Loaded rotate interval from NVS: %d seconds", rotate_interval);
+        } else {
+            // No persisted interval -> the compile-time default is in effect this
+            // boot. If this is logged on a frame the user configured for a shorter
+            // interval, NVS writes are not sticking (the frame runs off the
+            // server's per-cycle config sync) and the X-Next-Wake-Time it reports
+            // before that sync will be wrong (computed from this default). See the
+            // server-side next_pull guard which compensates. Remedy: erase NVS.
+            ESP_LOGW(TAG, "No rotate interval in NVS, using compile default: %d seconds",
+                     rotate_interval);
         }
 
         uint8_t stored_aligned = 1;
