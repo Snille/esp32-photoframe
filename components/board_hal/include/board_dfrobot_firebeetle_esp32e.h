@@ -12,6 +12,7 @@
 // holds it across deep sleep. Add an external 10k pull-up to 3V3 only if
 // spurious wake-ups occur. No rotate/clear buttons wired.
 #define BOARD_HAL_WAKEUP_KEY GPIO_NUM_13
+#define BOARD_HAL_WAKEUP_KEY_NAME "wake button (D7)"
 #define BOARD_HAL_ROTATE_KEY GPIO_NUM_NC
 #define BOARD_HAL_CLEAR_KEY  GPIO_NUM_NC
 
