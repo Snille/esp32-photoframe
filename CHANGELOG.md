@@ -11,6 +11,31 @@ tag keeps them out of the upstream `v*` CI that only builds the ESP32-S3 boards;
 the FireBeetle bin is built manually — classic ESP32, ESP-IDF v5.3.3, app at
 `0x10000`, 4 MB / dio / 40 MHz).
 
+## 2.10.0
+
+First release covering the **Seeed Studio XIAO EE02** (13.3" Spectra 6, ESP32-S3,
+PSRAM + 16 MB flash + OTA) alongside the FireBeetle. The EE02 and the other
+ESP32-S3 boards are built by CI on the `v*` tag and published as flashable
+factory bins in the GitHub Release.
+
+### Fixed
+- **On-device display orientation at rotated mounts (deg 90/270).** Images
+  produced on the device itself (`/api/display-image` raw push and the WebUI
+  upload → display path) were rendered at native panel dimensions, but
+  `GUI_Paint`'s drawing surface is width/height-swapped to the logical/viewing
+  dimensions at `ROTATE_90/270`. The mismatch clipped the image and made it
+  appear 180° rotated on a landscape-mounted panel. On-device processing now
+  fits to the logical (viewing) dimensions derived from `display_rotation_deg`,
+  matching the server's EPDGZ path. No-op at deg 0/180; server pull/push were
+  always correct and are unchanged.
+
+### Changed
+- **Splash generation has a layout-faithful Pillow fallback** for build hosts
+  without an SVG renderer (librsvg/Cairo): the baked splash now reserves the
+  same QR slots the firmware draws its live WiFi / web-UI QR into (and renders
+  the static app-download QR), instead of a placeholder whose centered text
+  collided with the live QR.
+
 ## 2.9.5
 
 ### Added
