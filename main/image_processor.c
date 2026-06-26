@@ -10,6 +10,7 @@
 
 #include "board_hal.h"
 #include "color_palette.h"
+#include "config_manager.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_task_wdt.h"
@@ -461,18 +462,29 @@ static esp_err_t process_rgb_buffer_core(uint8_t *rgb_buffer, int width, int hei
     int final_width = width;
     int final_height = height;
 
+    // GUI_Paint applies the mounting rotation (display_rotation_deg) when this
+    // image is later drawn, mapping a logical/viewing surface onto the native
+    // panel (its drawing surface is width/height-swapped at 90/270). So fit to
+    // the *logical* (viewing) dimensions here — the same logical->native model
+    // the server uses — otherwise a rotated mount clips and mis-rotates it.
+    int rot_deg = config_manager_get_display_rotation_deg() % 360;
+    int disp_w =
+        (rot_deg == 90 || rot_deg == 270) ? BOARD_HAL_DISPLAY_HEIGHT : BOARD_HAL_DISPLAY_WIDTH;
+    int disp_h =
+        (rot_deg == 90 || rot_deg == 270) ? BOARD_HAL_DISPLAY_WIDTH : BOARD_HAL_DISPLAY_HEIGHT;
+
     bool image_is_portrait = height > width;
-    bool board_is_portrait = BOARD_HAL_DISPLAY_HEIGHT > BOARD_HAL_DISPLAY_WIDTH;
+    bool board_is_portrait = disp_h > disp_w;
     bool needs_rotation = image_is_portrait != board_is_portrait;
 
     // STEP 1: Resize for target orientation
     int target_width, target_height;
     if (needs_rotation) {
-        target_width = (width * BOARD_HAL_DISPLAY_WIDTH) / height;
-        target_height = BOARD_HAL_DISPLAY_WIDTH;
+        target_width = (width * disp_w) / height;
+        target_height = disp_w;
     } else {
-        target_width = BOARD_HAL_DISPLAY_WIDTH;
-        target_height = BOARD_HAL_DISPLAY_HEIGHT;
+        target_width = disp_w;
+        target_height = disp_h;
     }
 
     if (final_width != target_width || final_height != target_height) {
@@ -520,13 +532,12 @@ static esp_err_t process_rgb_buffer_core(uint8_t *rgb_buffer, int width, int hei
         final_height = temp;
     }
 
-    // STEP 3: Final fit check
-    if (final_width != BOARD_HAL_DISPLAY_WIDTH || final_height != BOARD_HAL_DISPLAY_HEIGHT) {
-        uint8_t *final_resized = resize_image(final_image, final_width, final_height,
-                                              BOARD_HAL_DISPLAY_WIDTH, BOARD_HAL_DISPLAY_HEIGHT);
+    // STEP 3: Final fit check (to the logical/viewing dims; Paint rotates to native)
+    if (final_width != disp_w || final_height != disp_h) {
+        uint8_t *final_resized =
+            resize_image(final_image, final_width, final_height, disp_w, disp_h);
         if (!final_resized) {
-            ESP_LOGE(TAG, "Failed to final resize image to %dx%d", BOARD_HAL_DISPLAY_WIDTH,
-                     BOARD_HAL_DISPLAY_HEIGHT);
+            ESP_LOGE(TAG, "Failed to final resize image to %dx%d", disp_w, disp_h);
             if (final_image != rgb_buffer)
                 heap_caps_free(final_image);
             return ESP_FAIL;
@@ -534,8 +545,8 @@ static esp_err_t process_rgb_buffer_core(uint8_t *rgb_buffer, int width, int hei
         if (final_image != rgb_buffer)
             heap_caps_free(final_image);
         final_image = final_resized;
-        final_width = BOARD_HAL_DISPLAY_WIDTH;
-        final_height = BOARD_HAL_DISPLAY_HEIGHT;
+        final_width = disp_w;
+        final_height = disp_h;
     }
 
     // Apply fast Compressed Dynamic Range (fast CDR)
@@ -903,9 +914,17 @@ bool image_processor_is_processed(const char *input_path)
     int width = png_get_image_width(png_ptr, info_ptr);
     int height = png_get_image_height(png_ptr, info_ptr);
 
-    if (width != BOARD_HAL_DISPLAY_WIDTH || height != BOARD_HAL_DISPLAY_HEIGHT) {
-        ESP_LOGI(TAG, "Dimensions mismatch: %dx%d (expected %dx%d)", width, height,
-                 BOARD_HAL_DISPLAY_WIDTH, BOARD_HAL_DISPLAY_HEIGHT);
+    // A display-ready image is sized to the logical (viewing) dims; Paint rotates
+    // it to native. At 90/270 that is the panel with width/height swapped, so a
+    // native-sized upload is NOT display-ready and must be re-fitted/rotated.
+    int rot_deg = config_manager_get_display_rotation_deg() % 360;
+    int exp_w =
+        (rot_deg == 90 || rot_deg == 270) ? BOARD_HAL_DISPLAY_HEIGHT : BOARD_HAL_DISPLAY_WIDTH;
+    int exp_h =
+        (rot_deg == 90 || rot_deg == 270) ? BOARD_HAL_DISPLAY_WIDTH : BOARD_HAL_DISPLAY_HEIGHT;
+
+    if (width != exp_w || height != exp_h) {
+        ESP_LOGI(TAG, "Dimensions mismatch: %dx%d (expected %dx%d)", width, height, exp_w, exp_h);
         png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
         fclose(fp);
         return false;
@@ -991,10 +1010,15 @@ bool image_processor_is_processed_buffer(const uint8_t *data, size_t size)
         return false;
     }
 
-    // Check dimensions
-    if (width != BOARD_HAL_DISPLAY_WIDTH || height != BOARD_HAL_DISPLAY_HEIGHT) {
-        ESP_LOGI(TAG, "Buffer dimensions mismatch: %dx%d (expected %dx%d)", width, height,
-                 BOARD_HAL_DISPLAY_WIDTH, BOARD_HAL_DISPLAY_HEIGHT);
+    // Check dimensions against the logical (viewing) dims; Paint rotates to native.
+    int rot_deg = config_manager_get_display_rotation_deg() % 360;
+    int exp_w =
+        (rot_deg == 90 || rot_deg == 270) ? BOARD_HAL_DISPLAY_HEIGHT : BOARD_HAL_DISPLAY_WIDTH;
+    int exp_h =
+        (rot_deg == 90 || rot_deg == 270) ? BOARD_HAL_DISPLAY_WIDTH : BOARD_HAL_DISPLAY_HEIGHT;
+    if (width != exp_w || height != exp_h) {
+        ESP_LOGI(TAG, "Buffer dimensions mismatch: %dx%d (expected %dx%d)", width, height, exp_w,
+                 exp_h);
         heap_caps_free(rgb_buffer);
         return false;
     }

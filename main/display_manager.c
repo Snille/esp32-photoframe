@@ -155,6 +155,10 @@ esp_err_t display_manager_reclaim_epd_buffer(void)
 
 void display_manager_initialize_paint(void)
 {
+    // Paint rotates the logical/viewing-oriented image (produced at logical dims
+    // by image_processor) onto the native panel. Verified on hardware (EE02,
+    // deg=90, landscape mount): Paint.Rotate == display_rotation_deg yields the
+    // upright result that matches the server's EPDGZ output.
     Paint_NewImage(epd_image_buffer, BOARD_HAL_DISPLAY_WIDTH, BOARD_HAL_DISPLAY_HEIGHT,
                    config_manager_get_display_rotation_deg() % 360, EPD_7IN3E_WHITE);
     Paint_SetScale(6);

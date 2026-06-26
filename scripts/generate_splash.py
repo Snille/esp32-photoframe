@@ -230,7 +230,115 @@ def _pillow_placeholder_png(png_path: str, width: int, height: int) -> bool:
     return True
 
 
-def svg_to_png(svg_path: str, png_path: str, width: int, height: int) -> bool:
+def _draw_qr_pillow(draw, data: str, box_x: float, box_y: float, box_size: float) -> None:
+    """Render a QR code as black modules filling a (box_x, box_y, box_size) square."""
+    qr = qrcode.QRCode(
+        version=None,
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        box_size=1,
+        border=0,
+    )
+    qr.add_data(data)
+    qr.make(fit=True)
+    matrix = qr.get_matrix()
+    n = len(matrix)
+    module = box_size / n
+    for y, row in enumerate(matrix):
+        for x, cell in enumerate(row):
+            if cell:
+                px = box_x + x * module
+                py = box_y + y * module
+                draw.rectangle([px, py, px + module, py + module], fill=(0, 0, 0))
+
+
+def render_splash_pillow(png_path: str, width: int, height: int, kind: str) -> bool:
+    """Render the splash with Pillow, matching the SVG layout's QR slots.
+
+    Used when no SVG renderer (librsvg/Cairo) is available (e.g. Windows dev
+    boxes). Unlike the bare placeholder, this reserves the same white QR boxes
+    the firmware draws its live WiFi / web-UI QR into, so they never collide
+    with the title text.
+    """
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+    except ImportError:
+        print("ERROR: Pillow not installed. Run: pip install Pillow")
+        return False
+
+    is_landscape = width > height
+    L = LAYOUT["landscape" if is_landscape else "portrait"]
+    cream = (240, 228, 208)
+    muted = (200, 190, 170)
+
+    img = Image.new("RGB", (width, height), color=(90, 58, 32))  # #5a3a20
+    draw = ImageDraw.Draw(img)
+
+    def font(px):
+        for name in ("arialbd.ttf", "arial.ttf", "DejaVuSans.ttf"):
+            try:
+                return ImageFont.truetype(name, size=int(px))
+            except Exception:
+                continue
+        return ImageFont.load_default()
+
+    def centered(text, cx, y, f, fill):
+        bbox = draw.textbbox((0, 0), text, font=f)
+        draw.text((cx - (bbox[2] - bbox[0]) / 2, y), text, font=f, fill=fill)
+
+    title_size = max(18, height * L["title_size"])
+    subtitle_size = max(10, height * L["subtitle_size"])
+    label_size = max(12, height * (0.030 if is_landscape else 0.018))
+    label_gap = height * (0.06 if is_landscape else 0.025)
+
+    # Title + subtitle, kept above the QR row.
+    title_y = height * L["icon_y"]
+    centered("ESP Frame", width / 2, title_y, font(title_size), cream)
+    centered(
+        "Free and open source e-paper photo frames",
+        width / 2,
+        title_y + title_size * 1.6,
+        font(subtitle_size),
+        muted,
+    )
+
+    # QR sizing mirrors generate_splash_svg() so the white boxes line up with
+    # the firmware-drawn live QRs (SPLASH_WIFI_QR_* / SETUP_COMPLETE_QR_*).
+    _, app_qr_size = generate_qr_svg_path(APP_URL)
+    qr_scale = min(width * L["qr_size"], height * L["qr_size"]) / app_qr_size
+    box = int(app_qr_size * qr_scale)
+    qr_y = int(height * L["qr_y"])
+
+    def qr_box(x, label, qr_data=None, size=None):
+        s = size or box
+        draw.rounded_rectangle(
+            [x - 6, qr_y - 6, x + s + 6, qr_y + s + 6], radius=6, fill=(255, 255, 255)
+        )
+        if qr_data:
+            _draw_qr_pillow(draw, qr_data, x, qr_y, s)
+        centered(label, x + s / 2, qr_y + s + label_gap, font(label_size), cream)
+
+    if kind == "setup_complete":
+        qr_target = int(min(width, height) * L["qr_size"] * 1.3)
+        x = int((width - qr_target) / 2)
+        qr_box(x, "Scan for web UI", size=qr_target)  # firmware draws the live QR
+    else:
+        if is_landscape:
+            half = width * L["qr_spacing"] / 2
+            wifi_x = int(width / 2 - half - box / 2)
+            app_x = int(width / 2 + half - box / 2)
+        else:
+            gap = width * L["qr_spacing"]
+            wifi_x = int((width - (2 * box + gap)) / 2)
+            app_x = int(wifi_x + box + gap)
+        qr_box(wifi_x, "Scan to connect WiFi")          # firmware draws the live WiFi QR
+        qr_box(app_x, "Scan to download app", APP_URL)  # static app-download QR
+
+    img.save(png_path, "PNG")
+    print("  (Pillow splash rendered — QR slots match the firmware-drawn live QRs)")
+    return True
+
+
+def svg_to_png(svg_path: str, png_path: str, width: int, height: int, pillow_fallback=None) -> bool:
     """Convert SVG to PNG using rsvg-convert, cairosvg, or Pillow placeholder."""
     rsvg = shutil.which("rsvg-convert")
     if rsvg:
@@ -262,6 +370,25 @@ def svg_to_png(svg_path: str, png_path: str, width: int, height: int) -> bool:
     except Exception:
         pass  # cairosvg installed but Cairo .dll missing, try next
 
+    # Fallback 1.5: svglib + reportlab (pure Python, no native Cairo/GTK).
+    # Renders the real splash on Windows boxes that lack librsvg/Cairo.
+    try:
+        from svglib.svglib import svg2rlg
+        from reportlab.graphics import renderPM
+
+        drawing = svg2rlg(svg_path)
+        if drawing is not None:
+            sx = width / drawing.width if drawing.width else 1.0
+            sy = height / drawing.height if drawing.height else 1.0
+            drawing.width, drawing.height = width, height
+            drawing.scale(sx, sy)
+            renderPM.drawToFile(drawing, png_path, fmt="PNG", dpi=72)
+            return True
+    except ImportError:
+        pass  # svglib/reportlab not installed, try next
+    except Exception as e:
+        print(f"  svglib render failed ({e}); trying next renderer")
+
     # Fallback 2: Inkscape CLI (common on Linux/macOS/Windows)
     inkscape = shutil.which("inkscape")
     if inkscape:
@@ -276,8 +403,13 @@ def svg_to_png(svg_path: str, png_path: str, width: int, height: int) -> bool:
         except subprocess.CalledProcessError:
             pass
 
-    # Fallback 3: Pillow placeholder (no SVG rendering, just solid background)
-    print("  WARNING: No SVG renderer found (rsvg-convert / cairosvg / Inkscape).")
+    # Fallback 3: Pillow. Prefer the layout-faithful splash renderer (reserves
+    # the QR slots so the firmware's live QR doesn't collide with the title);
+    # fall back to the bare placeholder only if no renderer was supplied.
+    print("  No SVG renderer found (rsvg-convert / cairosvg / svglib / Inkscape).")
+    if pillow_fallback is not None:
+        print("    Rendering the splash with Pillow (QR-slot-faithful) instead.")
+        return pillow_fallback(png_path)
     print("    Generating a placeholder PNG with Pillow instead.")
     return _pillow_placeholder_png(png_path, width, height)
 
@@ -491,7 +623,10 @@ def main():
         png_path = os.path.join(args.output_dir, f"{name}.png")
 
         try:
-            if not svg_to_png(tmp_svg_path, png_path, w, h):
+            if not svg_to_png(
+                tmp_svg_path, png_path, w, h,
+                pillow_fallback=lambda p, _n=name: render_splash_pillow(p, w, h, _n),
+            ):
                 sys.exit(1)
             print(f"  PNG: {png_path}")
 
