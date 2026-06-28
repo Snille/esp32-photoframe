@@ -163,6 +163,13 @@ bool board_hal_is_charging(void)
     return axp2101_is_charging();
 }
 
+bool board_hal_supports_charge_status(void)
+{
+    // AXP2101 PMIC reports real charge + USB state. Left false until verified on
+    // hardware that charging/full/on_battery derive correctly; flip to true then.
+    return false;
+}
+
 bool board_hal_is_usb_connected(void)
 {
     return axp2101_is_usb_connected();

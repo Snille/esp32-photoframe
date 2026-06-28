@@ -11,6 +11,37 @@ tag keeps them out of the upstream `v*` CI that only builds the ESP32-S3 boards;
 the FireBeetle bin is built manually — classic ESP32, ESP-IDF v5.3.3, app at
 `0x10000`, 4 MB / dio / 40 MHz).
 
+## 2.10.1
+
+### Changed
+- **OTA now checks this fork instead of upstream.** The firmware update check
+  pointed at `aitjcize/esp32-photoframe`, so a frame only ever saw the upstream
+  releases (and could pull an unrelated upstream build). It now queries
+  **`Snille/esp32-photoframe`**. Because the repo carries two parallel release
+  lines — the classic-ESP32 FireBeetle (`firebeetle-v*`, no OTA) and the
+  ESP32-S3 boards (`v*`, OTA-capable) — the check walks the releases *list*
+  (newest first) and picks the newest published release that actually contains
+  this board's binary (`esp32-photoframe-<board>.bin`), rather than GitHub's
+  single "latest" release which could be a FireBeetle-only one with no S3 asset.
+
+### Added
+- **Charge status on the XIAO EE02 (best-effort) → Home Assistant.** The EE02's
+  BQ24070 charger exposes no MCU-readable charge line — its status pins drive the
+  on-board LEDs only (confirmed against the Seeed schematic) — so charging can't
+  be read directly. The board now derives a coarse status from USB-present +
+  battery voltage (`charging` / `full` / `on_battery`) and reports it to the
+  server (`X-Battery-Status`), which publishes a **Battery Status** sensor over
+  MQTT. A new `board_hal_supports_charge_status()` capability gates this so
+  boards that can't sense it (e.g. the FireBeetle) report nothing instead of a
+  misleading value. It is an estimate — it can read `full` during the final
+  charge taper, and a non-data USB power source may not register as connected.
+
+### Fixed
+- **Corrected charge-status documentation for the EE02/EE04.** The board Kconfig
+  claimed "Charging status via GPIO"; the schematic shows the BQ24070 status
+  pins are wired to LEDs only, not a GPIO. Updated the help text and the driver
+  comments to match.
+
 ## 2.10.0
 
 First release covering the **Seeed Studio XIAO EE02** (13.3" Spectra 6, ESP32-S3,

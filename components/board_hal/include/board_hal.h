@@ -93,6 +93,19 @@ bool board_hal_is_charging(void);
 bool board_hal_is_usb_connected(void);
 
 /**
+ * @brief Whether this board can report a meaningful charge status
+ *
+ * True only when board_hal_is_charging() carries real information — either a
+ * hardware charge-status line or a USB+voltage heuristic. Boards that cannot
+ * sense USB / charge state at all (e.g. FireBeetle) return false so callers can
+ * omit charge reporting entirely instead of publishing a misleading "not
+ * charging". Used to gate the X-Battery-Status header sent to the server.
+ *
+ * @return true if charge status is meaningful on this board
+ */
+bool board_hal_supports_charge_status(void);
+
+/**
  * @brief Perform a hard shutdown (power off)
  *
  * Note: Behavior depends on hardware. Some PMICs can cut power completely.

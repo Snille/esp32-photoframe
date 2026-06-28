@@ -125,7 +125,16 @@ typedef enum {
 #define NVS_AI_PROMPT_KEY "ai_prompt"
 
 // OTA Configuration
-#define GITHUB_API_URL "https://api.github.com/repos/aitjcize/esp32-photoframe/releases/latest"
+// Point OTA at this fork's releases. We query the releases *list* (not
+// /releases/latest) because the repo carries two parallel release lines: the
+// classic-ESP32 FireBeetle (tags firebeetle-v*, no OTA, asset is a merged bin)
+// and the ESP32-S3 boards (tags v*, OTA-capable, asset esp32-photoframe-<board>.bin).
+// /releases/latest returns whichever was published most recently regardless of
+// board, so a FireBeetle-only release would hide S3 updates. Instead the OTA
+// code walks this list (newest first) and picks the newest release that actually
+// contains this board's binary. per_page=30 covers all current releases.
+#define GITHUB_API_URL \
+    "https://api.github.com/repos/Snille/esp32-photoframe/releases?per_page=30"
 #define OTA_CHECK_INTERVAL_MS (24 * 60 * 60 * 1000)  // 24 hours
 
 #endif

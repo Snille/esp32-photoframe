@@ -194,6 +194,13 @@ bool board_hal_is_charging(void)
     return false;
 }
 
+bool board_hal_supports_charge_status(void)
+{
+    // No charge-status line and no USB detection on classic ESP32 — nothing to
+    // report. The server's voltage-regression trend remains the only signal.
+    return false;
+}
+
 bool board_hal_is_usb_connected(void)
 {
     // Classic ESP32 has no USB-JTAG; USB detection is not available.

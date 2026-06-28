@@ -728,6 +728,17 @@ esp_err_t fetch_and_save_image_from_url(const char *url, char *saved_image_path,
             esp_http_client_set_header(client, "X-Battery-Voltage", batt_mv_str);
         }
 
+        // Report a coarse charge status the server can surface in Home Assistant.
+        // Only boards that can actually sense it (USB + voltage, or a real charge
+        // line) report — others omit the header so the server shows nothing
+        // rather than a misleading "on battery". See board_hal_supports_charge_status().
+        if (board_hal_supports_charge_status()) {
+            const char *batt_status = !board_hal_is_usb_connected() ? "on_battery"
+                                      : board_hal_is_charging()     ? "charging"
+                                                                    : "full";
+            esp_http_client_set_header(client, "X-Battery-Status", batt_status);
+        }
+
         // Instrument the internal-RAM margin right before the request. On
         // SRAM-only boards this is the figure that decides whether an HTTPS
         // handshake (~16 KB) can be satisfied alongside the permanently-held

@@ -162,7 +162,17 @@ int board_hal_get_battery_percent(void)
 
 bool board_hal_is_charging(void)
 {
-    // TODO: Read BQ24070 charging status from its CHRG GPIO pin.
+    // Not detectable: like the EE02, the BQ24070 charge-status pins drive
+    // on-board LEDs only and are not routed to a GPIO (verify against the EE04
+    // schematic; revisit if a future board rev breaks STAT out to a GPIO).
+    return false;
+}
+
+bool board_hal_supports_charge_status(void)
+{
+    // No real charge status and no USB+voltage heuristic implemented yet.
+    // Could mirror the EE02 heuristic (USB works via usb_serial_jtag) once
+    // verified on EE04 hardware.
     return false;
 }
 

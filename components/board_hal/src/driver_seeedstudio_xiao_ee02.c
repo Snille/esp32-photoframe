@@ -20,14 +20,13 @@ static const char *TAG = "board_hal_ee02";
 #define VBAT_ADC_ENABLE_PIN GPIO_NUM_6  // TPS22916 load switch enable
 #define VBAT_VOLTAGE_DIVIDER 2.0f
 
-// USB detection (VBUS)
-// Standard XIAO S3 detects VBUS via GPIO? Or rely on internal USB serial?
-// For now, simpler approach: assume USB connected if we can print to log?
-// Actually, BQ24070 has PGOOD / CHG outputs but they might not be wired to GPIOs on the shield.
-// Let's rely on empirical behavior or assume always connected for now if not defined.
-// NOTE: EE02 schematic shows:
-// BAT_ADC -> GPIO 1 (D0/A0)
-// No direct VBUS GPIO shown on simple schematic, often internal or not wired.
+// USB detection (VBUS): handled via usb_serial_jtag_is_connected() in
+// board_hal_is_usb_connected() below — VBUS is not broken out to a readable GPIO
+// on this board (rev V1.0), so the USB-Serial/JTAG link state is the signal.
+// Charge status: per the official Seeed EE02 schematic the BQ24070 STAT pins go
+// to LEDs only, not a GPIO — see board_hal_is_charging() below.
+// Verified pin map (rev V1.0): BAT_ADC -> GPIO1 (D0/A0); ADC load-switch enable
+// (TPS22916) -> GPIO6; buttons -> GPIO2/3/5.
 
 static adc_oneshot_unit_handle_t adc_handle = NULL;
 
@@ -168,11 +167,41 @@ int board_hal_get_battery_percent(void)
     return (voltage - 3300) * 100 / (4200 - 3300);
 }
 
+// Battery is treated as essentially full at/above this terminal voltage.
+// During the charger's CV phase the pack sits near 4.2 V while current still
+// tapers, so reaching this threshold means "near full", not strictly complete.
+#define CHARGE_FULL_THRESHOLD_MV 4150
+
 bool board_hal_is_charging(void)
 {
-    // TODO: Need specific GPIO for CHG status if available.
-    // Return false for now to be safe.
-    return false;
+    // The real charge state is NOT detectable on this board (rev V1.0):
+    // confirmed against the official Seeed EE02 schematic, the BQ24070 status
+    // pins STAT1 (pin 2) / STAT2 (pin 3) drive only the on-board green LEDs
+    // (D5/D16) and are not routed to any ESP32-S3 GPIO. Revisit if a future
+    // board rev breaks STAT out to a GPIO.
+    //
+    // Heuristic instead: if USB is present and the pack is below ~full, assume
+    // it's charging. Consumers distinguish "full" as usb_connected && !charging.
+    // This is an estimate — it flips to "full" during the CV taper (last few %
+    // still going in), and a non-data USB power source may not register as
+    // connected (usb_serial_jtag link state is the only USB signal available).
+    if (!board_hal_is_usb_connected()) {
+        return false;  // on battery → definitely not charging
+    }
+
+    int voltage = board_hal_get_battery_voltage();
+    if (voltage < 0) {
+        return false;  // no reading → don't claim charging
+    }
+
+    return voltage < CHARGE_FULL_THRESHOLD_MV;
+}
+
+bool board_hal_supports_charge_status(void)
+{
+    // USB detection works (usb_serial_jtag) and is_charging() applies the
+    // USB+voltage heuristic, so we can report charging/full/on_battery.
+    return true;
 }
 
 bool board_hal_is_usb_connected(void)

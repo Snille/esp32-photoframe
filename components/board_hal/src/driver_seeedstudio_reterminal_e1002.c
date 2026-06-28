@@ -295,6 +295,12 @@ bool board_hal_is_charging(void)
     return false;
 }
 
+bool board_hal_supports_charge_status(void)
+{
+    // is_charging() is not implemented (always false); don't report a status.
+    return false;
+}
+
 bool board_hal_is_usb_connected(void)
 {
     return usb_serial_jtag_is_connected();

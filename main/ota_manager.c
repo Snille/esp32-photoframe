@@ -195,65 +195,76 @@ static esp_err_t fetch_github_release_info(char *latest_version, size_t version_
 
     response_buffer[response_len] = '\0';
 
-    // Parse JSON response
+    // Parse JSON response. GITHUB_API_URL is the releases *list* endpoint, so the
+    // root is an array of release objects sorted newest-first (by created_at).
     cJSON *json = cJSON_Parse(response_buffer);
-    if (json == NULL) {
-        ESP_LOGE(TAG, "Failed to parse JSON response");
+    if (json == NULL || !cJSON_IsArray(json)) {
+        ESP_LOGE(TAG, "Failed to parse releases JSON array");
+        if (json) {
+            cJSON_Delete(json);
+        }
         err = ESP_FAIL;
         goto cleanup;
     }
 
-    // Get tag_name (version)
-    cJSON *tag_name = cJSON_GetObjectItem(json, "tag_name");
-    if (tag_name == NULL || !cJSON_IsString(tag_name)) {
-        ESP_LOGE(TAG, "tag_name not found in response");
-        cJSON_Delete(json);
-        err = ESP_FAIL;
-        goto cleanup;
-    }
-
-    snprintf(latest_version, version_len, "%s", tag_name->valuestring);
-
-    // Get assets array and find .bin file
-    cJSON *assets = cJSON_GetObjectItem(json, "assets");
-    if (assets == NULL || !cJSON_IsArray(assets)) {
-        ESP_LOGE(TAG, "assets not found in response");
-        cJSON_Delete(json);
-        err = ESP_FAIL;
-        goto cleanup;
-    }
-
-    bool found_binary = false;
-    cJSON *asset = NULL;
-
+    // Build the board-specific asset name we need (e.g.
+    // esp32-photoframe-seeedstudio_xiao_ee02.bin). This repo mixes releases for
+    // several boards, so we walk releases newest-first and stop at the first
+    // published (non-draft, non-prerelease) release that carries OUR asset. That
+    // is the newest update relevant to this board, ignoring releases cut for
+    // other boards (e.g. FireBeetle merged bins).
     const char *board_name = BOARD_HAL_NAME;
-
     char target_binary[64];
     snprintf(target_binary, sizeof(target_binary), "esp32-photoframe-%s.bin", board_name);
-    ESP_LOGI(TAG, "Searching for board-specific OTA binary: %s", target_binary);
+    ESP_LOGI(TAG, "Searching releases for board-specific OTA binary: %s", target_binary);
 
-    cJSON_ArrayForEach(asset, assets)
+    bool found_binary = false;
+    cJSON *release = NULL;
+
+    cJSON_ArrayForEach(release, json)
     {
-        cJSON *name = cJSON_GetObjectItem(asset, "name");
-        if (name && cJSON_IsString(name)) {
-            const char *asset_name = name->valuestring;
-            // Look for board-specific binary
-            if (strcmp(asset_name, target_binary) == 0) {
-                cJSON *browser_download_url = cJSON_GetObjectItem(asset, "browser_download_url");
-                if (browser_download_url && cJSON_IsString(browser_download_url)) {
-                    snprintf(download_url, url_len, "%s", browser_download_url->valuestring);
-                    found_binary = true;
-                    ESP_LOGI(TAG, "Found firmware binary: %s", asset_name);
-                    break;
-                }
+        cJSON *draft = cJSON_GetObjectItem(release, "draft");
+        cJSON *prerelease = cJSON_GetObjectItem(release, "prerelease");
+        if (cJSON_IsTrue(draft) || cJSON_IsTrue(prerelease)) {
+            continue;
+        }
+
+        cJSON *tag_name = cJSON_GetObjectItem(release, "tag_name");
+        cJSON *assets = cJSON_GetObjectItem(release, "assets");
+        if (tag_name == NULL || !cJSON_IsString(tag_name) || assets == NULL ||
+            !cJSON_IsArray(assets)) {
+            continue;
+        }
+
+        cJSON *asset = NULL;
+        cJSON_ArrayForEach(asset, assets)
+        {
+            cJSON *name = cJSON_GetObjectItem(asset, "name");
+            if (name == NULL || !cJSON_IsString(name) ||
+                strcmp(name->valuestring, target_binary) != 0) {
+                continue;
             }
+
+            cJSON *browser_download_url = cJSON_GetObjectItem(asset, "browser_download_url");
+            if (browser_download_url && cJSON_IsString(browser_download_url)) {
+                snprintf(latest_version, version_len, "%s", tag_name->valuestring);
+                snprintf(download_url, url_len, "%s", browser_download_url->valuestring);
+                found_binary = true;
+                ESP_LOGI(TAG, "Found firmware binary %s in release %s", name->valuestring,
+                         tag_name->valuestring);
+            }
+            break;
+        }
+
+        if (found_binary) {
+            break;
         }
     }
 
     cJSON_Delete(json);
 
     if (!found_binary) {
-        ESP_LOGE(TAG, "No .bin file found in release assets");
+        ESP_LOGE(TAG, "No release with asset %s found", target_binary);
         err = ESP_FAIL;
         goto cleanup;
     }

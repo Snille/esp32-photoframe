@@ -25,7 +25,8 @@ menu "Board Configuration"
                 Driver for Seeed Studio XIAO EE02 board.
                 Uses BQ24070 Linear Charger.
                 Voltage is read via ADC. Percentage is estimated.
-                Charging status via GPIO.
+                Charging status NOT readable: on board rev V1.0 the BQ24070
+                STAT1/STAT2 pins drive on-board LEDs only, not an MCU GPIO.
                 No SD card support.
                 AI rotation mode disabled due to limited PSRAM.
 
@@ -36,7 +37,9 @@ menu "Board Configuration"
                 Driver for Seeed Studio XIAO EE04 board (7.3" 6-color).
                 Uses BQ24070 Linear Charger.
                 Voltage is read via ADC. Percentage is estimated.
-                Charging status via GPIO.
+                Charging status NOT readable: like the EE02, the BQ24070 charge
+                status drives on-board LEDs only, not an MCU GPIO (verify if a
+                future board rev routes STAT to a GPIO).
                 No SD card support.
                 AI rotation mode disabled due to limited PSRAM.
 
