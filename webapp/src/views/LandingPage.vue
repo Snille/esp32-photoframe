@@ -1,7 +1,9 @@
 <script setup>
 import { ref, onMounted, watch, computed } from "vue";
+import { useTheme } from "vuetify";
 import { getPreset, getPresetOptions, getDefaultParams } from "@aitjcize/epaper-image-convert";
 import { useSettingsStore } from "../stores";
+import { themeOptions, THEME_STORAGE_KEY, DEFAULT_THEME } from "../plugins/vuetify";
 import ImageProcessing from "../components/ImageProcessing.vue";
 import ProcessingControls from "../components/ProcessingControls.vue";
 import boardsData from "../../../boards/boards.json";
@@ -16,6 +18,24 @@ const devVersion = ref("loading…");
 const selectedVersion = ref("stable");
 const selectedBoard = ref("waveshare_photopainter_73");
 const baseUrl = import.meta.env.BASE_URL;
+
+// Theme switcher — same 6 named themes + storage key as the webapps, so the
+// landing page follows the chosen palette (terracotta/ocean/forest × light/dark).
+const vuetifyTheme = useTheme();
+const currentTheme = ref(DEFAULT_THEME);
+function setTheme(name) {
+  currentTheme.value = name;
+  vuetifyTheme.global.name.value = name;
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, name);
+  } catch (e) {
+    /* ignore storage failures (private mode etc.) */
+  }
+}
+onMounted(() => {
+  const saved = localStorage.getItem(THEME_STORAGE_KEY);
+  setTheme(saved && themeOptions.some((t) => t.value === saved) ? saved : DEFAULT_THEME);
+});
 
 const supportedBoards = boardsData.map((b) => ({
   ...b,
@@ -246,7 +266,7 @@ function scrollTo(id) {
 
 <template>
   <v-app>
-    <div class="page">
+    <div class="page" :class="`theme-${currentTheme}`">
       <!-- ─────────────────────────────────────────  NAV  ───────────────────────────────────────── -->
       <header class="nav">
         <a class="nav-brand" href="#" @click.prevent="scrollTo('top')">
@@ -262,9 +282,35 @@ function scrollTo(id) {
         </nav>
         <div class="nav-meta">
           <span class="version-chip">{{ stableVersion }}</span>
+          <v-menu location="bottom end">
+            <template #activator="{ props }">
+              <button
+                v-bind="props"
+                class="nav-github nav-icon-btn"
+                type="button"
+                aria-label="Choose theme"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path
+                    d="M12 3a9 9 0 0 0 0 18c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1-.24-.27-.39-.62-.39-1 0-.83.67-1.5 1.5-1.5H16a5 5 0 0 0 5-5c0-4.42-4.03-8-9-8Zm-5.5 9a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Zm3-4a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Zm3 4a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Z"
+                  />
+                </svg>
+              </button>
+            </template>
+            <v-list density="compact" min-width="180">
+              <v-list-item
+                v-for="opt in themeOptions"
+                :key="opt.value"
+                :active="opt.value === currentTheme"
+                @click="setTheme(opt.value)"
+              >
+                <v-list-item-title>{{ opt.title }}</v-list-item-title>
+              </v-list-item>
+            </v-list>
+          </v-menu>
           <a
             class="nav-github"
-            href="https://github.com/aitjcize/esp32-photoframe"
+            href="https://github.com/Snille/esp32-photoframe"
             target="_blank"
             rel="noopener"
             aria-label="View on GitHub"
@@ -738,6 +784,100 @@ function scrollTo(id) {
   min-height: 100vh;
   position: relative;
   overflow-x: hidden;
+}
+
+/* ───────────────────────────────  THEME PALETTES  ───────────────────────────────
+   The base .page tokens above are the Terracotta (light) palette. Each of the other
+   five named themes (matching the webapps' vuetify themes) re-derives the full
+   paper/ink/accent set so the whole page recolors when a theme is picked. */
+.page.theme-terracottaDark {
+  --paper: #1f140a;
+  --paper-deep: #160e06;
+  --paper-soft: #2c1d10;
+  --ink: #f4ead6;
+  --ink-2: #e0d2b8;
+  --ink-3: #b9a585;
+  --ink-4: #8a7a5e;
+  --rule: #3a2a18;
+  --accent: #e0a55e;
+  --accent-deep: #c98a3b;
+  --accent-soft: #5a4226;
+  --espresso: #160e06;
+  --espresso-2: #2c1d10;
+  --cream: #f4ead6;
+}
+.page.theme-ocean {
+  --paper: #eef2f7;
+  --paper-deep: #dde6ef;
+  --paper-soft: #f7fafd;
+  --ink: #0f1c2b;
+  --ink-2: #243648;
+  --ink-3: #4a6075;
+  --ink-4: #8298ac;
+  --rule: #c2d2e0;
+  --accent: #2f6398;
+  --accent-deep: #244f7a;
+  --accent-soft: #b9d2e8;
+  --espresso: #0f1c2b;
+  --espresso-2: #16273a;
+  --cream: #eef2f7;
+}
+.page.theme-oceanDark {
+  --paper: #0f1925;
+  --paper-deep: #0a121b;
+  --paper-soft: #182636;
+  --ink: #e8eef5;
+  --ink-2: #c6d3e0;
+  --ink-3: #93a7bb;
+  --ink-4: #6a7e92;
+  --rule: #243648;
+  --accent: #4a90d9;
+  --accent-deep: #2f6398;
+  --accent-soft: #20354a;
+  --espresso: #0a121b;
+  --espresso-2: #16273a;
+  --cream: #e8eef5;
+}
+.page.theme-forest {
+  --paper: #eef3ec;
+  --paper-deep: #dde7d9;
+  --paper-soft: #f6faf4;
+  --ink: #14241a;
+  --ink-2: #2a3d2f;
+  --ink-3: #4f6553;
+  --ink-4: #88a08c;
+  --rule: #c8d8c4;
+  --accent: #2f9852;
+  --accent-deep: #237a40;
+  --accent-soft: #bfe2c8;
+  --espresso: #14241a;
+  --espresso-2: #1b3122;
+  --cream: #eef3ec;
+}
+.page.theme-forestDark {
+  --paper: #101c14;
+  --paper-deep: #0a130d;
+  --paper-soft: #18261c;
+  --ink: #e8f1ea;
+  --ink-2: #c6d8cb;
+  --ink-3: #93ab99;
+  --ink-4: #6a8270;
+  --rule: #243d2b;
+  --accent: #3fae68;
+  --accent-deep: #2f9852;
+  --accent-soft: #1e3a28;
+  --espresso: #0a130d;
+  --espresso-2: #18261c;
+  --cream: #e8f1ea;
+}
+
+/* Theme-switcher button: reset native <button> chrome so it matches .nav-github */
+.nav-icon-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
 }
 
 /* Subtle paper grain across the whole page */
