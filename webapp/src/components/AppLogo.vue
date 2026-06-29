@@ -1,11 +1,5 @@
 <template>
-  <svg
-    :width="size"
-    :height="size"
-    viewBox="0 0 512 512"
-    role="img"
-    aria-label="PhotoFrame"
-  >
+  <svg :width="size" :height="size" viewBox="0 0 512 512" role="img" aria-label="PhotoFrame">
     <defs>
       <linearGradient :id="shellId" x1="0" y1="0" x2="1" y2="1">
         <stop offset="0%" :stop-color="c.shellStart" />
@@ -64,8 +58,7 @@ const hexToRgb = (hex) => {
   ];
 };
 const rgbToHex = (r, g, b) =>
-  "#" +
-  [r, g, b].map((x) => clamp(Math.round(x)).toString(16).padStart(2, "0")).join("");
+  "#" + [r, g, b].map((x) => clamp(Math.round(x)).toString(16).padStart(2, "0")).join("");
 // amt in [-1, 1]: positive lightens toward white, negative darkens toward black.
 const shade = (hex, amt) => {
   const [r, g, b] = hexToRgb(hex);

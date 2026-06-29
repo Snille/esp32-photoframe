@@ -1,0 +1,6 @@
+# npm-managed; prettier must not reformat it or `npm install` re-breaks format-check
+package-lock.json
+
+# generated / vendored
+node_modules/
+coverage/

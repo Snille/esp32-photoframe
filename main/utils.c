@@ -333,16 +333,16 @@ typedef struct {
     char *etag;            // Optional ETag buffer (HTTP_ETAG_MAX_LEN bytes) for 304 caching
     // Streaming EPDGZ inflate (avoids writing compressed data to MemFS)
     z_stream inflate_strm;
-    bool inflate_candidate; // true when headers suggest EPDGZ may be streamed
-    bool inflate_checked;   // true after the first body chunk has been inspected
-    bool inflate_active;    // true when streaming inflate is in use
-    bool inflate_failed;    // true if any inflate step failed
-    uint8_t *inflate_out;   // Output buffer (EPD image buffer, pre-allocated)
-    size_t inflate_out_size;    // EPD buffer capacity in bytes
-    size_t inflate_out_written; // Bytes decompressed so far
-    bool raw_epd_active;        // true when streaming uncompressed 4bpp EPD data
-    bool raw_epd_failed;        // true if raw EPD payload exceeds the display buffer
-    size_t raw_epd_written;     // Bytes copied into the EPD buffer
+    bool inflate_candidate;      // true when headers suggest EPDGZ may be streamed
+    bool inflate_checked;        // true after the first body chunk has been inspected
+    bool inflate_active;         // true when streaming inflate is in use
+    bool inflate_failed;         // true if any inflate step failed
+    uint8_t *inflate_out;        // Output buffer (EPD image buffer, pre-allocated)
+    size_t inflate_out_size;     // EPD buffer capacity in bytes
+    size_t inflate_out_written;  // Bytes decompressed so far
+    bool raw_epd_active;         // true when streaming uncompressed 4bpp EPD data
+    bool raw_epd_failed;         // true if raw EPD payload exceeds the display buffer
+    size_t raw_epd_written;      // Bytes copied into the EPD buffer
 } download_context_t;
 
 // HTTP event handler to write data to file or stream-decompress EPDGZ
@@ -369,14 +369,14 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt)
                     ctx->inflate_failed = true;
                 }
             } else {
-                ESP_LOGW("http_dl",
-                         "application/octet-stream payload is not gzip; saving for format detection");
+                ESP_LOGW(
+                    "http_dl",
+                    "application/octet-stream payload is not gzip; saving for format detection");
             }
         }
 
         if (ctx->raw_epd_active && !ctx->raw_epd_failed) {
-            if (!ctx->inflate_out ||
-                ctx->raw_epd_written + evt->data_len > ctx->inflate_out_size) {
+            if (!ctx->inflate_out || ctx->raw_epd_written + evt->data_len > ctx->inflate_out_size) {
                 ESP_LOGE("http_dl", "raw EPD payload too large: %zu + %d > %zu",
                          ctx->raw_epd_written, evt->data_len, ctx->inflate_out_size);
                 ctx->raw_epd_failed = true;
@@ -387,10 +387,10 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt)
             ctx->total_read += evt->data_len;
         } else if (ctx->inflate_active && !ctx->inflate_failed) {
             // Stream-decompress EPDGZ directly into EPD buffer
-            ctx->inflate_strm.avail_in = (uInt)evt->data_len;
-            ctx->inflate_strm.next_in  = (Bytef *)evt->data;
-            ctx->inflate_strm.avail_out = (uInt)(ctx->inflate_out_size - ctx->inflate_out_written);
-            ctx->inflate_strm.next_out  = ctx->inflate_out + ctx->inflate_out_written;
+            ctx->inflate_strm.avail_in = (uInt) evt->data_len;
+            ctx->inflate_strm.next_in = (Bytef *) evt->data;
+            ctx->inflate_strm.avail_out = (uInt) (ctx->inflate_out_size - ctx->inflate_out_written);
+            ctx->inflate_strm.next_out = ctx->inflate_out + ctx->inflate_out_written;
             int ret = inflate(&ctx->inflate_strm, Z_NO_FLUSH);
             if (ret != Z_OK && ret != Z_STREAM_END && ret != Z_BUF_ERROR) {
                 ESP_LOGE("http_dl", "inflate error: %d", ret);
@@ -415,8 +415,7 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt)
             ctx->inflate_candidate =
                 strcasecmp(evt->header_value, "application/octet-stream") == 0 ||
                 strcasecmp(evt->header_value, "application/x-epdgz") == 0;
-            ctx->raw_epd_active =
-                strcasecmp(evt->header_value, "application/x-epd-raw") == 0;
+            ctx->raw_epd_active = strcasecmp(evt->header_value, "application/x-epd-raw") == 0;
         } else if (strcasecmp(evt->header_key, "X-Thumbnail-URL") == 0) {
             // Capture thumbnail URL if provided by server (case-insensitive)
             if (ctx->thumbnail_url && strlen(evt->header_value) > 0) {
@@ -525,7 +524,7 @@ esp_err_t fetch_and_save_image_from_url(const char *url, char *saved_image_path,
                                   .inflate_active = false,
                                   .inflate_failed = false,
                                   .inflate_out = epd_buf,
-                                  .inflate_out_size = (size_t)epd_buf_size,
+                                  .inflate_out_size = (size_t) epd_buf_size,
                                   .inflate_out_written = 0,
                                   .raw_epd_active = false,
                                   .raw_epd_failed = false,
@@ -613,18 +612,18 @@ esp_err_t fetch_and_save_image_from_url(const char *url, char *saved_image_path,
         // press, or a cold boot/reset.
         const char *wake_reason;
         switch (power_manager_get_wakeup_source()) {
-            case WAKEUP_SOURCE_TIMER:
-                wake_reason = "timer";
-                break;
-            case WAKEUP_SOURCE_BOOT_BUTTON:
-            case WAKEUP_SOURCE_ROTATE_BUTTON:
-            case WAKEUP_SOURCE_CLEAR_BUTTON:
-            case WAKEUP_SOURCE_EXT1_UNKNOWN:
-                wake_reason = "button";
-                break;
-            default:
-                wake_reason = "boot";
-                break;
+        case WAKEUP_SOURCE_TIMER:
+            wake_reason = "timer";
+            break;
+        case WAKEUP_SOURCE_BOOT_BUTTON:
+        case WAKEUP_SOURCE_ROTATE_BUTTON:
+        case WAKEUP_SOURCE_CLEAR_BUTTON:
+        case WAKEUP_SOURCE_EXT1_UNKNOWN:
+            wake_reason = "button";
+            break;
+        default:
+            wake_reason = "boot";
+            break;
         }
         esp_http_client_set_header(client, "X-Wake-Reason", wake_reason);
 
@@ -844,8 +843,7 @@ esp_err_t fetch_and_save_image_from_url(const char *url, char *saved_image_path,
     // The server can send uncompressed 4bpp panel bytes for SRAM-only boards.
     // Those bytes are copied directly into the display buffer while downloading.
     if (raw_epd_streamed) {
-        ESP_LOGI(TAG, "Raw EPD streamed into EPD buffer (%zu bytes), displaying",
-                 raw_epd_written);
+        ESP_LOGI(TAG, "Raw EPD streamed into EPD buffer (%zu bytes), displaying", raw_epd_written);
         free(content_type);
         free(thumbnail_url_buffer);
         free(config_payload_buffer);

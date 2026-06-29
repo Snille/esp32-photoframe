@@ -72,10 +72,11 @@ static void cmd_data(uint8_t cmd, const uint8_t *data, size_t len)
 
     spi_transaction_ext_t cmd_t = {
         .command_bits = 8,
-        .base = {
-            .flags = SPI_TRANS_VARIABLE_CMD,
-            .cmd = cmd,
-        },
+        .base =
+            {
+                .flags = SPI_TRANS_VARIABLE_CMD,
+                .cmd = cmd,
+            },
     };
     esp_err_t ret = spi_device_polling_start(spi, &cmd_t.base, portMAX_DELAY);
     if (ret == ESP_OK) {
@@ -146,8 +147,8 @@ static void wait_busy(const char *label, uint32_t fallback_ms)
     while (!is_busy()) {
         vTaskDelay(pdMS_TO_TICKS(5));
         if (++assert_wait > 200) {  // 1s
-            ESP_LOGW(TAG, "[%s] BUSY never asserted (line not wired?); waiting %lu ms",
-                     label, (unsigned long) fallback_ms);
+            ESP_LOGW(TAG, "[%s] BUSY never asserted (line not wired?); waiting %lu ms", label,
+                     (unsigned long) fallback_ms);
             vTaskDelay(pdMS_TO_TICKS(fallback_ms));
             return;
         }
@@ -224,19 +225,19 @@ static void hw_reset(void)
 static void send_init_sequence(void)
 {
     cmd_data(0xAA, (uint8_t[]){0x49, 0x55, 0x20, 0x08, 0x09, 0x18}, 6);  // CMDH
-    cmd_data(0x01, (uint8_t[]){0x3F}, 1);                                 // PWRR
-    cmd_data(0x00, (uint8_t[]){0x5F, 0x69}, 2);                           // PSR
-    cmd_data(0x05, (uint8_t[]){0x40, 0x1F, 0x1F, 0x2C}, 4);               // BTST1
-    cmd_data(0x08, (uint8_t[]){0x6F, 0x1F, 0x1F, 0x22}, 4);               // BTST3
-    cmd_data(0x06, (uint8_t[]){0x6F, 0x1F, 0x17, 0x17}, 4);               // BTST2
-    cmd_data(0x03, (uint8_t[]){0x00, 0x54, 0x00, 0x44}, 4);               // POFS
-    cmd_data(0x60, (uint8_t[]){0x02, 0x00}, 2);                            // TCON
-    cmd_data(0x30, (uint8_t[]){0x08}, 1);                                  // PLL
-    cmd_data(0x50, (uint8_t[]){0x3F}, 1);                                  // CDI
+    cmd_data(0x01, (uint8_t[]){0x3F}, 1);                                // PWRR
+    cmd_data(0x00, (uint8_t[]){0x5F, 0x69}, 2);                          // PSR
+    cmd_data(0x05, (uint8_t[]){0x40, 0x1F, 0x1F, 0x2C}, 4);              // BTST1
+    cmd_data(0x08, (uint8_t[]){0x6F, 0x1F, 0x1F, 0x22}, 4);              // BTST3
+    cmd_data(0x06, (uint8_t[]){0x6F, 0x1F, 0x17, 0x17}, 4);              // BTST2
+    cmd_data(0x03, (uint8_t[]){0x00, 0x54, 0x00, 0x44}, 4);              // POFS
+    cmd_data(0x60, (uint8_t[]){0x02, 0x00}, 2);                          // TCON
+    cmd_data(0x30, (uint8_t[]){0x08}, 1);                                // PLL
+    cmd_data(0x50, (uint8_t[]){0x3F}, 1);                                // CDI
     // TRES: native resolution 400x600 (0x0190=400 width, 0x0258=600 height)
-    cmd_data(0x61, (uint8_t[]){0x01, 0x90, 0x02, 0x58}, 4);               // TRES
-    cmd_data(0xE3, (uint8_t[]){0x2F}, 1);                                  // PWS
-    cmd_data(0x84, (uint8_t[]){0x01}, 1);                                  // T_VDCS
+    cmd_data(0x61, (uint8_t[]){0x01, 0x90, 0x02, 0x58}, 4);  // TRES
+    cmd_data(0xE3, (uint8_t[]){0x2F}, 1);                    // PWS
+    cmd_data(0x84, (uint8_t[]){0x01}, 1);                    // T_VDCS
 }
 
 static void display_update_cycle(uint8_t *image)
@@ -258,7 +259,7 @@ static void display_update_cycle(uint8_t *image)
     vTaskDelay(pdMS_TO_TICKS(100));
 
     ESP_LOGI(TAG, "power on...");
-    send_command(0x04);  // POWER_ON
+    send_command(0x04);           // POWER_ON
     wait_busy("power_on", 1000);  // power-up is quick; 1s fallback if BUSY unwired
     vTaskDelay(pdMS_TO_TICKS(200));
 

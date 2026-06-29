@@ -101,7 +101,7 @@ int GUI_ReadEPDGZBuffer(const uint8_t *data, size_t len)
 
     z_stream strm = {0};
     strm.avail_in = len;
-    strm.next_in = (Bytef *)data;
+    strm.next_in = (Bytef *) data;
     strm.avail_out = uncompressed_size;
     strm.next_out = out_buf;
 

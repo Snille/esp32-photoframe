@@ -74,11 +74,11 @@ esp_err_t board_hal_prepare_for_sleep(void)
 // resistors (a 1:2 divider), so the pad sees half the battery voltage.
 // GPIO34 = ADC1 channel 6. The 1M divider is high-impedance and noisy, so we
 // average many samples and use the eFuse ADC calibration for accuracy.
-#define VBAT_ADC_UNIT    ADC_UNIT_1
+#define VBAT_ADC_UNIT ADC_UNIT_1
 #define VBAT_ADC_CHANNEL ADC_CHANNEL_6  // GPIO34
-#define VBAT_ADC_ATTEN   ADC_ATTEN_DB_12
-#define VBAT_DIVIDER     2.0f
-#define VBAT_SAMPLES     64
+#define VBAT_ADC_ATTEN ADC_ATTEN_DB_12
+#define VBAT_DIVIDER 2.0f
+#define VBAT_SAMPLES 64
 
 static adc_oneshot_unit_handle_t bat_adc_handle = NULL;
 static adc_cali_handle_t bat_cali_handle = NULL;

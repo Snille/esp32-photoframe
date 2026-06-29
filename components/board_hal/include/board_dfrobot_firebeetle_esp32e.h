@@ -14,7 +14,7 @@
 #define BOARD_HAL_WAKEUP_KEY GPIO_NUM_13
 #define BOARD_HAL_WAKEUP_KEY_NAME "wake button (D7)"
 #define BOARD_HAL_ROTATE_KEY GPIO_NUM_NC
-#define BOARD_HAL_CLEAR_KEY  GPIO_NUM_NC
+#define BOARD_HAL_CLEAR_KEY GPIO_NUM_NC
 
 // SPI Pins — VSPI (SPI3_HOST) native pins on classic ESP32
 #define BOARD_HAL_SPI_SCLK_PIN GPIO_NUM_18
@@ -29,10 +29,10 @@
 // RST  = White wire  → D3  (GPIO 26)
 // DC   = Green wire  → D2  (GPIO 25)
 // PWR  = Brown wire  → hardwired to 3V3 (no GPIO needed)
-#define BOARD_HAL_EPD_CS_PIN   GPIO_NUM_2
+#define BOARD_HAL_EPD_CS_PIN GPIO_NUM_2
 #define BOARD_HAL_EPD_BUSY_PIN GPIO_NUM_14
-#define BOARD_HAL_EPD_RST_PIN  GPIO_NUM_26
-#define BOARD_HAL_EPD_DC_PIN   GPIO_NUM_25
+#define BOARD_HAL_EPD_RST_PIN GPIO_NUM_26
+#define BOARD_HAL_EPD_DC_PIN GPIO_NUM_25
 
 // Display Configuration
 #define BOARD_HAL_DISPLAY_ROTATION_DEG 0

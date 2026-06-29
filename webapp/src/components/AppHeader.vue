@@ -103,8 +103,8 @@ function getBatteryColor(level) {
         <v-card class="pa-3" min-width="240">
           <div class="text-subtitle-2">Skip in queue</div>
           <div class="text-caption text-medium-emphasis mb-2" style="max-width: 220px">
-            One-time jump and refresh now — not a permanent setting (it won't
-            skip on every rotation).
+            One-time jump and refresh now — not a permanent setting (it won't skip on every
+            rotation).
           </div>
           <div class="d-flex align-center" style="gap: 8px">
             <v-btn

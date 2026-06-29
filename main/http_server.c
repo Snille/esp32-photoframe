@@ -18,13 +18,12 @@
 #include "config_manager.h"
 #include "display_manager.h"
 #include "esp_app_desc.h"
-#include "esp_ota_ops.h"
-#include "esp_system.h"
-#include "soc/rtc_cntl_reg.h"
 #include "esp_heap_caps.h"
 #include "esp_http_server.h"
 #include "esp_littlefs.h"
 #include "esp_log.h"
+#include "esp_ota_ops.h"
+#include "esp_system.h"
 #include "esp_vfs.h"
 #include "esp_vfs_fat.h"
 #include "freertos/task.h"
@@ -36,6 +35,7 @@
 #include "power_manager.h"
 #include "processing_settings.h"
 #include "sdcard.h"
+#include "soc/rtc_cntl_reg.h"
 #include "storage.h"
 #include "utils.h"
 
@@ -2208,8 +2208,7 @@ static esp_err_t system_info_handler(httpd_req_t *req)
     // hides the firmware-update section.
     cJSON_AddBoolToObject(response, "ota_supported",
                           esp_ota_get_next_update_partition(NULL) != NULL);
-    cJSON_AddBoolToObject(response, "download_mode_supported",
-                          BOARD_SUPPORTS_SW_DOWNLOAD_MODE);
+    cJSON_AddBoolToObject(response, "download_mode_supported", BOARD_SUPPORTS_SW_DOWNLOAD_MODE);
 
     // HTTPS image rotation needs ~16 KB of contiguous internal RAM for the TLS
     // handshake, which SRAM-only boards (no PSRAM, e.g. the 4MB FireBeetle)
@@ -2430,9 +2429,10 @@ static esp_err_t enter_download_mode_handler(httpd_req_t *req)
 #else
     httpd_resp_set_type(req, "application/json");
     httpd_resp_set_status(req, "400 Bad Request");
-    httpd_resp_sendstr(req,
-                       "{\"status\":\"error\",\"message\":\"Software flash mode is not supported on "
-                       "this chip (classic ESP32). Use the BOOT button.\"}");
+    httpd_resp_sendstr(
+        req,
+        "{\"status\":\"error\",\"message\":\"Software flash mode is not supported on "
+        "this chip (classic ESP32). Use the BOOT button.\"}");
     return ESP_OK;
 #endif
 }

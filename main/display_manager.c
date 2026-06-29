@@ -105,7 +105,8 @@ esp_err_t display_manager_init(void)
         epd_image_buffer = (uint8_t *) heap_caps_malloc(image_buffer_size, MALLOC_CAP_8BIT);
     }
     if (!epd_image_buffer) {
-        ESP_LOGE(TAG, "Failed to allocate image buffer (%lu bytes)", (unsigned long) image_buffer_size);
+        ESP_LOGE(TAG, "Failed to allocate image buffer (%lu bytes)",
+                 (unsigned long) image_buffer_size);
         return ESP_FAIL;
     }
     ESP_LOGI(TAG, "Image buffer allocated: %lu bytes", (unsigned long) image_buffer_size);
@@ -145,7 +146,8 @@ esp_err_t display_manager_reclaim_epd_buffer(void)
         epd_image_buffer = heap_caps_malloc(image_buffer_size, MALLOC_CAP_8BIT);
     }
     if (!epd_image_buffer) {
-        ESP_LOGE(TAG, "Failed to reclaim EPD buffer (%lu bytes)", (unsigned long) image_buffer_size);
+        ESP_LOGE(TAG, "Failed to reclaim EPD buffer (%lu bytes)",
+                 (unsigned long) image_buffer_size);
         return ESP_ERR_NO_MEM;
     }
     display_manager_initialize_paint();

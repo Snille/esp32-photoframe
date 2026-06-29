@@ -213,7 +213,12 @@ def _pillow_placeholder_png(png_path: str, width: int, height: int) -> bool:
         font = ImageFont.load_default()
     bbox = draw.textbbox((0, 0), title, font=font)
     tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    draw.text(((width - tw) // 2, (height - th) // 2 - th), title, fill=(240, 228, 208), font=font)
+    draw.text(
+        ((width - tw) // 2, (height - th) // 2 - th),
+        title,
+        fill=(240, 228, 208),
+        font=font,
+    )
 
     # Subtitle
     sub = "Splash placeholder (Cairo not installed)"
@@ -223,14 +228,18 @@ def _pillow_placeholder_png(png_path: str, width: int, height: int) -> bool:
         sfont = ImageFont.load_default()
     sbbox = draw.textbbox((0, 0), sub, font=sfont)
     sw = sbbox[2] - sbbox[0]
-    draw.text(((width - sw) // 2, (height + th) // 2), sub, fill=(200, 190, 170), font=sfont)
+    draw.text(
+        ((width - sw) // 2, (height + th) // 2), sub, fill=(200, 190, 170), font=sfont
+    )
 
     img.save(png_path, "PNG")
     print("  (Pillow placeholder used - install librsvg or Cairo for the real splash)")
     return True
 
 
-def _draw_qr_pillow(draw, data: str, box_x: float, box_y: float, box_size: float) -> None:
+def _draw_qr_pillow(
+    draw, data: str, box_x: float, box_y: float, box_size: float
+) -> None:
     """Render a QR code as black modules filling a (box_x, box_y, box_size) square."""
     qr = qrcode.QRCode(
         version=None,
@@ -330,7 +339,7 @@ def render_splash_pillow(png_path: str, width: int, height: int, kind: str) -> b
             gap = width * L["qr_spacing"]
             wifi_x = int((width - (2 * box + gap)) / 2)
             app_x = int(wifi_x + box + gap)
-        qr_box(wifi_x, "Scan to connect WiFi")          # firmware draws the live WiFi QR
+        qr_box(wifi_x, "Scan to connect WiFi")  # firmware draws the live WiFi QR
         qr_box(app_x, "Scan to download app", APP_URL)  # static app-download QR
 
     img.save(png_path, "PNG")
@@ -338,7 +347,9 @@ def render_splash_pillow(png_path: str, width: int, height: int, kind: str) -> b
     return True
 
 
-def svg_to_png(svg_path: str, png_path: str, width: int, height: int, pillow_fallback=None) -> bool:
+def svg_to_png(
+    svg_path: str, png_path: str, width: int, height: int, pillow_fallback=None
+) -> bool:
     """Convert SVG to PNG using rsvg-convert, cairosvg, or Pillow placeholder."""
     rsvg = shutil.which("rsvg-convert")
     if rsvg:
@@ -356,6 +367,7 @@ def svg_to_png(svg_path: str, png_path: str, width: int, height: int, pillow_fal
     # Fallback 1: cairosvg (needs native libcairo)
     try:
         import cairosvg
+
         with open(svg_path, "rb") as f:
             svg_data = f.read()
         cairosvg.svg2png(
@@ -373,8 +385,8 @@ def svg_to_png(svg_path: str, png_path: str, width: int, height: int, pillow_fal
     # Fallback 1.5: svglib + reportlab (pure Python, no native Cairo/GTK).
     # Renders the real splash on Windows boxes that lack librsvg/Cairo.
     try:
-        from svglib.svglib import svg2rlg
         from reportlab.graphics import renderPM
+        from svglib.svglib import svg2rlg
 
         drawing = svg2rlg(svg_path)
         if drawing is not None:
@@ -394,8 +406,14 @@ def svg_to_png(svg_path: str, png_path: str, width: int, height: int, pillow_fal
     if inkscape:
         try:
             subprocess.run(
-                [inkscape, "--export-type=png", f"--export-filename={png_path}",
-                 f"--export-width={width}", f"--export-height={height}", svg_path],
+                [
+                    inkscape,
+                    "--export-type=png",
+                    f"--export-filename={png_path}",
+                    f"--export-width={width}",
+                    f"--export-height={height}",
+                    svg_path,
+                ],
                 check=True,
                 capture_output=True,
             )
@@ -624,7 +642,10 @@ def main():
 
         try:
             if not svg_to_png(
-                tmp_svg_path, png_path, w, h,
+                tmp_svg_path,
+                png_path,
+                w,
+                h,
                 pillow_fallback=lambda p, _n=name: render_splash_pillow(p, w, h, _n),
             ):
                 sys.exit(1)

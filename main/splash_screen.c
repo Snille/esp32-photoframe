@@ -190,7 +190,8 @@ esp_err_t splash_screen_display(void)
     esp_err_t ret = decompress_gzip(splash_epdgz_start, epdgz_size, epd_buffer, buf_size);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to decompress splash EPDGZ");
-        if (owns_buffer) heap_caps_free(epd_buffer);
+        if (owns_buffer)
+            heap_caps_free(epd_buffer);
         return ret;
     }
 
@@ -221,7 +222,8 @@ esp_err_t splash_screen_display(void)
     ret = esp_qrcode_generate(&qr_cfg, wifi_qr_data);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to generate WiFi QR code");
-        if (owns_buffer) heap_caps_free(epd_buffer);
+        if (owns_buffer)
+            heap_caps_free(epd_buffer);
         return ret;
     }
 
@@ -229,7 +231,8 @@ esp_err_t splash_screen_display(void)
     ESP_LOGI(TAG, "Displaying splash screen");
     epaper_display(epd_buffer);
 
-    if (owns_buffer) heap_caps_free(epd_buffer);
+    if (owns_buffer)
+        heap_caps_free(epd_buffer);
     ESP_LOGI(TAG, "Splash screen displayed successfully");
     return ESP_OK;
 }
@@ -242,7 +245,8 @@ esp_err_t splash_screen_display_setup_complete(const char *hostname)
 
     ESP_LOGI(TAG, "Showing setup complete screen (%dx%d)", width, height);
 
-    // Reuse display_manager's pre-allocated buffer (avoids second large allocation on SRAM-only boards)
+    // Reuse display_manager's pre-allocated buffer (avoids second large allocation on SRAM-only
+    // boards)
     uint32_t dm_buf_size = 0;
     uint8_t *epd_buffer = display_manager_get_epd_buffer(&dm_buf_size);
     bool owns_buffer = false;
@@ -267,7 +271,8 @@ esp_err_t splash_screen_display_setup_complete(const char *hostname)
     esp_err_t ret = decompress_gzip(setup_complete_epdgz_start, epdgz_size, epd_buffer, buf_size);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to decompress setup_complete EPDGZ");
-        if (owns_buffer) heap_caps_free(epd_buffer);
+        if (owns_buffer)
+            heap_caps_free(epd_buffer);
         return ret;
     }
 
@@ -294,14 +299,16 @@ esp_err_t splash_screen_display_setup_complete(const char *hostname)
     ret = esp_qrcode_generate(&qr_cfg, url);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to generate web UI QR code");
-        if (owns_buffer) heap_caps_free(epd_buffer);
+        if (owns_buffer)
+            heap_caps_free(epd_buffer);
         return ret;
     }
 
     ESP_LOGI(TAG, "Displaying setup complete screen");
     epaper_display(epd_buffer);
 
-    if (owns_buffer) heap_caps_free(epd_buffer);
+    if (owns_buffer)
+        heap_caps_free(epd_buffer);
     ESP_LOGI(TAG, "Setup complete screen displayed successfully");
     return ESP_OK;
 }

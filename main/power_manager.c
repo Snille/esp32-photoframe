@@ -19,7 +19,7 @@
 static inline uint32_t esp_sleep_get_wakeup_causes(void)
 {
     esp_sleep_wakeup_cause_t c = esp_sleep_get_wakeup_cause();
-    return (c == ESP_SLEEP_WAKEUP_UNDEFINED) ? 0u : (1u << (uint32_t)c);
+    return (c == ESP_SLEEP_WAKEUP_UNDEFINED) ? 0u : (1u << (uint32_t) c);
 }
 #endif
 
@@ -299,7 +299,7 @@ static void button_monitor_task(void *arg)
             if (press_start != 0 && !hold_fired) {
                 int64_t dur = esp_timer_get_time() - press_start;
                 const char *action = (dur >= LONG_US) ? config_manager_get_button_action_long()
-                                                       : config_manager_get_button_action_short();
+                                                      : config_manager_get_button_action_short();
                 dispatch_button_action(action);
             }
             press_start = 0;

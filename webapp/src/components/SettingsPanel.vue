@@ -19,8 +19,7 @@ const buttonActionOptions = [
 // Boards with persistent storage support in-browser upload (and thus the
 // client-side AI keys). SRAM-only boards hide those fields.
 const hasUploadSupport = computed(
-  () =>
-    appStore.systemInfo.sdcard_inserted || appStore.systemInfo.has_flash_storage
+  () => appStore.systemInfo.sdcard_inserted || appStore.systemInfo.has_flash_storage
 );
 
 // SRAM-only boards (no PSRAM, e.g. the 4MB FireBeetle) can't complete a TLS
@@ -28,9 +27,7 @@ const hasUploadSupport = computed(
 // URLs fail with out-of-memory errors and never rotate. system-info exposes
 // https_supported=false on those boards. Treat a missing flag as supported so
 // older firmware doesn't get a false warning.
-const httpsUnsupported = computed(
-  () => appStore.systemInfo.https_supported === false
-);
+const httpsUnsupported = computed(() => appStore.systemInfo.https_supported === false);
 
 const imageUrlIsHttps = computed(() =>
   /^\s*https:\/\//i.test(settingsStore.deviceSettings.imageUrl || "")
@@ -631,10 +628,10 @@ async function enterFlashMode() {
                       density="compact"
                       class="mb-4"
                     >
-                      HTTPS image URLs are not supported on this board (no PSRAM — the
-                      TLS handshake runs out of memory). Use an
-                      <strong>http://</strong> URL, e.g. your photoframe server on the
-                      local network.
+                      HTTPS image URLs are not supported on this board (no PSRAM — the TLS handshake
+                      runs out of memory). Use an
+                      <strong>http://</strong> URL, e.g. your photoframe server on the local
+                      network.
                     </v-alert>
 
                     <div
@@ -826,10 +823,10 @@ async function enterFlashMode() {
           <!-- AI Generation Tab -->
           <v-tabs-window-item value="ai">
             <v-alert type="info" variant="tonal" density="compact" class="mt-2 mb-4">
-              Prompt is used for server-side AI generation (e.g. ComfyUI) when the
-              image source is set to AI Generation.<template v-if="hasUploadSupport">
-                API keys below are only for client-side generation when uploading
-                images.</template>
+              Prompt is used for server-side AI generation (e.g. ComfyUI) when the image source is
+              set to AI Generation.<template v-if="hasUploadSupport">
+                API keys below are only for client-side generation when uploading images.</template
+              >
             </v-alert>
 
             <v-textarea
@@ -926,9 +923,9 @@ async function enterFlashMode() {
                     Enter Flash Mode
                   </v-btn>
                   <div class="text-caption text-grey mt-2">
-                    Reboots the device into USB flash/download mode so you can
-                    flash new firmware over USB without pressing BOOT/RST. The
-                    device goes offline until you flash it or power-cycle it.
+                    Reboots the device into USB flash/download mode so you can flash new firmware
+                    over USB without pressing BOOT/RST. The device goes offline until you flash it
+                    or power-cycle it.
                   </div>
                 </v-col>
               </v-row>
@@ -961,12 +958,7 @@ async function enterFlashMode() {
             {{ saveMessage || "Failed to save settings" }}
           </v-chip>
         </v-fade-transition>
-        <v-btn
-          color="primary"
-          :loading="saving"
-          :disabled="httpsUrlBlocked"
-          @click="saveSettings"
-        >
+        <v-btn color="primary" :loading="saving" :disabled="httpsUrlBlocked" @click="saveSettings">
           <v-icon icon="mdi-content-save" start />
           Save Settings
         </v-btn>
@@ -1024,14 +1016,13 @@ async function enterFlashMode() {
         </v-card-title>
         <v-card-text>
           <div class="text-body-1 mb-3">
-            The device will reboot into USB download mode and go offline. Then,
-            from your computer, run your flash command (esptool) over USB — no
-            BOOT/RST buttons needed.
+            The device will reboot into USB download mode and go offline. Then, from your computer,
+            run your flash command (esptool) over USB — no BOOT/RST buttons needed.
           </div>
           <v-alert type="info" variant="tonal" density="compact">
             <div class="text-body-2">
-              To cancel without flashing, just power-cycle the device (it boots
-              normally on a full reset).
+              To cancel without flashing, just power-cycle the device (it boots normally on a full
+              reset).
             </div>
           </v-alert>
         </v-card-text>

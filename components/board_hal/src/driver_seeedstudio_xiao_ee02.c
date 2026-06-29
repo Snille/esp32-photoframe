@@ -1,5 +1,5 @@
-#include "board_hal.h"
 #include "battery_adc.h"
+#include "board_hal.h"
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
 #include "driver/usb_serial_jtag.h"

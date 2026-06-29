@@ -138,8 +138,7 @@ typedef enum {
 // board, so a FireBeetle-only release would hide S3 updates. Instead the OTA
 // code walks this list (newest first) and picks the newest release that actually
 // contains this board's binary. per_page=30 covers all current releases.
-#define GITHUB_API_URL \
-    "https://api.github.com/repos/Snille/esp32-photoframe/releases?per_page=30"
+#define GITHUB_API_URL "https://api.github.com/repos/Snille/esp32-photoframe/releases?per_page=30"
 #define OTA_CHECK_INTERVAL_MS (24 * 60 * 60 * 1000)  // 24 hours
 
 #endif
