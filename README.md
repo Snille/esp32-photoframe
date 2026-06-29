@@ -2,7 +2,7 @@
 
 A modern, feature-rich firmware for ESP32-based e-paper photo frames (currently supporting **Waveshare PhotoPainter**, **Seeed Studio XIAO EE02/EE04**, **Seeed Studio reTerminal E1002**, and the **DFRobot FireBeetle 2 ESP32-E** driving a **Waveshare 4" Spectra 6** panel). This firmware replaces stock firmware with a powerful RESTful API, web interface, and **significantly better image quality**.
 
-![PhotoFrame](.img/esp32-photoframe.png)
+![PhotoFrame Mini — a DFRobot FireBeetle 2 ESP32-E driving a Waveshare 4" Spectra 6 panel](.img/mini-frame-on-display.jpg)
 
 ## Key Features
 
@@ -14,6 +14,23 @@ A modern, feature-rich firmware for ESP32-based e-paper photo frames (currently 
 - 🖼️ **Image Server**: [Companion server](https://github.com/Snille/esp32-photoframe-server) with Google Photos, Synology DS Photos, and Telegram Bot support
 - 🏠 **Home Assistant intigration via MQTT**
 - 🔌 **RESTful API**: Full programmatic control ([API docs](docs/API.md))
+
+## The Mini frame
+
+A compact, battery-powered build in a 3D-printed case: a **DFRobot FireBeetle 2 ESP32-E** (classic ESP32, 4 MB flash) driving a **Waveshare 4" e-Paper HAT+ E** — a 400×600 Spectra 6 (6-colour) panel — that deep-sleeps between rotations and pulls photos from the companion server over the LAN.
+
+<table>
+<tr>
+<td><img src=".img/mini-frame-front01.jpg" width="260"/><br/><sub>Front — 3D-printed case</sub></td>
+<td><img src=".img/mini-frame-front03.jpg" width="260"/><br/><sub>On the shelf</sub></td>
+<td><img src=".img/mini-frame-back01.jpg" width="260"/><br/><sub>Back</sub></td>
+</tr>
+<tr>
+<td><img src=".img/mini-frame-inside-firebeetle2.jpg" width="260"/><br/><sub>Inside — FireBeetle 2 ESP32-E + wiring</sub></td>
+<td><img src=".img/mini-frame-inside-screen.jpg" width="260"/><br/><sub>Inside — the Spectra 6 panel</sub></td>
+<td><img src=".img/mini-frame-on-display.jpg" width="260"/><br/><sub>Displaying a photo</sub></td>
+</tr>
+</table>
 
 ## Ecosystem
 
@@ -33,7 +50,7 @@ This project has companion tools for different use cases:
 
 ## Image Quality Comparison
 
-**🎨 [Try the Interactive Demo](https://aitjcize.github.io/esp32-photoframe/)** - Drag the slider to compare algorithms in real-time with your own images!
+**🎨 [Try the Interactive Demo](https://snille.github.io/esp32-photoframe/)** - Drag the slider to compare algorithms in real-time with your own images!
 
 <table>
 <tr>
@@ -43,10 +60,10 @@ This project has companion tools for different use cases:
 <td align="center"><b>Our Algorithm<br/>(on device)</b></td>
 </tr>
 <tr>
-<td><a href="https://github.com/aitjcize/esp32-photoframe/raw/refs/heads/main/.img/sample.jpg"><img src=".img/sample.jpg" width="200"/></a></td>
-<td><a href="https://github.com/aitjcize/esp32-photoframe/raw/refs/heads/main/.img/stock_algorithm_on_computer.bmp"><img src=".img/stock_algorithm_on_computer.bmp" width="200"/></a></td>
-<td><a href="https://github.com/aitjcize/esp32-photoframe/raw/refs/heads/main/.img/stock_algorithm.bmp"><img src=".img/stock_algorithm.bmp" width="200"/></a></td>
-<td><a href="https://github.com/aitjcize/esp32-photoframe/raw/refs/heads/main/.img/our_algorithm.png"><img src=".img/our_algorithm.png" width="200"/></a></td>
+<td><a href="https://github.com/Snille/esp32-photoframe/raw/refs/heads/main/.img/sample.jpg"><img src=".img/sample.jpg" width="200"/></a></td>
+<td><a href="https://github.com/Snille/esp32-photoframe/raw/refs/heads/main/.img/stock_algorithm_on_computer.bmp"><img src=".img/stock_algorithm_on_computer.bmp" width="200"/></a></td>
+<td><a href="https://github.com/Snille/esp32-photoframe/raw/refs/heads/main/.img/stock_algorithm.bmp"><img src=".img/stock_algorithm.bmp" width="200"/></a></td>
+<td><a href="https://github.com/Snille/esp32-photoframe/raw/refs/heads/main/.img/our_algorithm.png"><img src=".img/our_algorithm.png" width="200"/></a></td>
 </tr>
 <tr>
 <td align="center">Source JPEG</td>
@@ -187,7 +204,7 @@ Boards with larger flash chips (XIAO EE02/EE04, reTerminal E1002) use internal f
 
 ### Web Flasher (Easiest) ⚡
 
-**[🌐 Flash from Browser](https://aitjcize.github.io/esp32-photoframe/#flash)** - Chrome/Edge/Opera required
+**[🌐 Flash from Browser](https://snille.github.io/esp32-photoframe/#flash)** - Chrome/Edge/Opera required
 
 > **Note:** the browser flasher and the upstream CI releases cover the **ESP32-S3** boards only. The **FireBeetle 2 ESP32-E** is a classic ESP32 built manually — its flashable factory bin is published on this fork's [Releases](https://github.com/Snille/esp32-photoframe/releases) under tags named `firebeetle-v<version>` (e.g. `firebeetle-v2.9.1`). Flash it with esptool as shown below.
 
