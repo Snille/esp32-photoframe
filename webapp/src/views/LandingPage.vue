@@ -195,11 +195,18 @@ watch(selectedBoard, () => loadVersionInfo());
 
 async function loadVersionInfo() {
   try {
+    // The fork carries two release lines — S3 boards (`v*`, what this web
+    // flasher serves) and the FireBeetle (`firebeetle-v*`). `/releases/latest`
+    // returns whichever was published most recently regardless of line, so
+    // fetch the list and pick the newest published `v*` release instead.
     const stableResponse = await fetch(
-      "https://api.github.com/repos/aitjcize/esp32-photoframe/releases/latest"
+      "https://api.github.com/repos/Snille/esp32-photoframe/releases?per_page=30"
     );
-    const stableData = await stableResponse.json();
-    stableVersion.value = stableData.tag_name;
+    const releases = await stableResponse.json();
+    const stable = Array.isArray(releases)
+      ? releases.find((r) => !r.draft && !r.prerelease && /^v\d/.test(r.tag_name))
+      : null;
+    stableVersion.value = stable ? stable.tag_name : "unknown";
 
     let devResponse = await fetch(baseUrl + selectedBoard.value + "/manifest-dev.json");
     if (!devResponse.ok) {
