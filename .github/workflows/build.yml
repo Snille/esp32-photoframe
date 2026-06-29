@@ -52,7 +52,7 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v5
       with:
-        node-version: '20'
+        node-version: '22'
 
     - name: Build webapp
       run: python3 build.py --step webapp
@@ -92,7 +92,7 @@ jobs:
         cp build/esp32-photoframe.bin firmware/esp32-photoframe-${{ matrix.board }}.bin
 
     - name: Upload firmware artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: photoframe-firmware-${{ matrix.board }}
         path: firmware/
@@ -106,14 +106,14 @@ jobs:
       contents: write
     steps:
     - name: Download all firmware artifacts
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         path: firmware-artifacts
         pattern: photoframe-firmware-*
         merge-multiple: true
 
     - name: Create Release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v3
       with:
         draft: true
         files: |
@@ -168,7 +168,7 @@ jobs:
         fetch-depth: 0
 
     - name: Download all firmware artifacts
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         path: firmware-artifacts
         pattern: photoframe-firmware-*
@@ -177,7 +177,7 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v5
       with:
-        node-version: '20'
+        node-version: '22'
 
     - name: Build demo webapp
       run: |
@@ -261,7 +261,7 @@ jobs:
         GH_TOKEN: ${{ github.token }}
 
     - name: Setup Pages
-      uses: actions/configure-pages@v4
+      uses: actions/configure-pages@v6
       with:
         # Auto-enable Pages (build_type: workflow) the first time, using the
         # job's pages:write token — avoids the "Get Pages site failed / Not
@@ -269,9 +269,9 @@ jobs:
         enablement: true
 
     - name: Upload Pages artifact
-      uses: actions/upload-pages-artifact@v3
+      uses: actions/upload-pages-artifact@v5
       with:
         path: demo
 
     - name: Deploy to GitHub Pages
-      uses: actions/deploy-pages@v4
+      uses: actions/deploy-pages@v5
