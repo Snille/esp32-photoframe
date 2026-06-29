@@ -1,4 +1,5 @@
 #include "board_hal.h"
+#include "battery_adc.h"
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
 #include "driver/usb_serial_jtag.h"
@@ -20,6 +21,13 @@ static const char *TAG = "board_hal_ee02";
 #define VBAT_ADC_ENABLE_PIN GPIO_NUM_6  // TPS22916 load switch enable
 #define VBAT_VOLTAGE_DIVIDER 2.0f
 
+// Optional per-unit correction for resistor-divider tolerance, measured with a
+// multimeter (1.0 = none). Override at build time if a board reads consistently
+// high/low.
+#ifndef VBAT_CAL_SCALE
+#define VBAT_CAL_SCALE 1.0f
+#endif
+
 // USB detection (VBUS): handled via usb_serial_jtag_is_connected() in
 // board_hal_is_usb_connected() below — VBUS is not broken out to a readable GPIO
 // on this board (rev V1.0), so the USB-Serial/JTAG link state is the signal.
@@ -28,7 +36,7 @@ static const char *TAG = "board_hal_ee02";
 // Verified pin map (rev V1.0): BAT_ADC -> GPIO1 (D0/A0); ADC load-switch enable
 // (TPS22916) -> GPIO6; buttons -> GPIO2/3/5.
 
-static adc_oneshot_unit_handle_t adc_handle = NULL;
+static battery_adc_t *vbat_adc = NULL;
 
 esp_err_t board_hal_init(void)
 {
@@ -73,24 +81,22 @@ esp_err_t board_hal_init(void)
     ESP_ERROR_CHECK(gpio_config(&io_conf));
     gpio_set_level(VBAT_ADC_ENABLE_PIN, 0);
 
-    // Initialize ADC for battery voltage
-    adc_oneshot_unit_init_cfg_t init_config = {
-        .unit_id = ADC_UNIT_1,
-        .clk_src = ADC_DIGI_CLK_SRC_DEFAULT,
+    // Initialize the shared, eFuse-calibrated + averaged battery ADC reader.
+    // The TPS22916 enable pin is already configured as an output above; the
+    // helper only toggles it during a read.
+    battery_adc_config_t vbat_cfg = {
+        .unit = ADC_UNIT_1,
+        .channel = VBAT_ADC_CHANNEL,
+        .atten = ADC_ATTEN_DB_12,
+        .enable_pin = VBAT_ADC_ENABLE_PIN,
+        .settle_ms = 10,
+        .samples = 8,
+        .divider = VBAT_VOLTAGE_DIVIDER,
+        .cal_scale = VBAT_CAL_SCALE,
     };
-    esp_err_t ret = adc_oneshot_new_unit(&init_config, &adc_handle);
+    esp_err_t ret = battery_adc_create(&vbat_cfg, &vbat_adc);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "ADC init failed: %s", esp_err_to_name(ret));
-        return ret;
-    }
-
-    adc_oneshot_chan_cfg_t config = {
-        .bitwidth = ADC_BITWIDTH_DEFAULT,
-        .atten = ADC_ATTEN_DB_12,  // 11dB or 12dB for full range (up to ~3.3V)
-    };
-    ret = adc_oneshot_config_channel(adc_handle, VBAT_ADC_CHANNEL, &config);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "ADC channel config failed: %s", esp_err_to_name(ret));
+        ESP_LOGE(TAG, "Battery ADC init failed: %s", esp_err_to_name(ret));
         return ret;
     }
 
@@ -113,9 +119,9 @@ esp_err_t board_hal_prepare_for_sleep(void)
     gpio_deep_sleep_hold_en();
 
     // Disable ADC to save power
-    if (adc_handle) {
-        adc_oneshot_del_unit(adc_handle);
-        adc_handle = NULL;
+    if (vbat_adc) {
+        battery_adc_destroy(vbat_adc);
+        vbat_adc = NULL;
     }
 
     return ESP_OK;
@@ -128,27 +134,9 @@ bool board_hal_is_battery_connected(void)
 
 int board_hal_get_battery_voltage(void)
 {
-    if (!adc_handle)
-        return -1;
-
-    // Enable TPS22916 load switch to connect battery voltage divider to ADC
-    gpio_set_level(VBAT_ADC_ENABLE_PIN, 1);
-    vTaskDelay(pdMS_TO_TICKS(10));
-
-    int adc_raw;
-    int voltage_mv = -1;
-    if (adc_oneshot_read(adc_handle, VBAT_ADC_CHANNEL, &adc_raw) == ESP_OK) {
-        // Crude conversion without calibration curve for now.
-        // ADC_ATTEN_DB_11 is roughly 3.3V full scale at 4096 (12bit).
-        // Voltage = raw * (3300 / 4095) * divider
-        float v = (float) adc_raw * (3300.0f / 4095.0f) * VBAT_VOLTAGE_DIVIDER;
-        voltage_mv = (int) v;
-    }
-
-    // Disable TPS22916 load switch to save power
-    gpio_set_level(VBAT_ADC_ENABLE_PIN, 0);
-
-    return voltage_mv;
+    // The helper toggles the TPS22916 load switch, averages several samples and
+    // applies eFuse calibration + the divider; returns mV or -1 on failure.
+    return battery_adc_read_mv(vbat_adc);
 }
 
 int board_hal_get_battery_percent(void)

@@ -11,6 +11,19 @@ tag keeps them out of the upstream `v*` CI that only builds the ESP32-S3 boards;
 the FireBeetle bin is built manually — classic ESP32, ESP-IDF v5.3.3, app at
 `0x10000`, 4 MB / dio / 40 MHz).
 
+## 2.10.3
+
+### Fixed
+- **Stable, calibrated battery reading on the XIAO EE02.** The EE02's
+  battery-voltage read took a single uncalibrated ADC sample (`raw * 3300/4095`),
+  so the reported percentage jumped wildly between reads (e.g. 20 % → 85 % → 53 %)
+  — the ESP32-S3 ADC is noisy and nonlinear, and the steep LiPo curve (~9 mV per
+  percent) amplified every bit of noise. The board now uses the shared
+  `battery_adc` helper (ported from upstream) which applies **eFuse curve-fitting
+  calibration** and **averages 8 samples** per read, giving a steady, accurate
+  voltage. Only affects the EE02 (the FireBeetle already calibrated + averaged its
+  own read).
+
 ## 2.10.2
 
 Pulls two upstream improvements (cherry-picked from
