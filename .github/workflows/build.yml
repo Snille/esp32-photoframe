@@ -262,6 +262,11 @@ jobs:
 
     - name: Setup Pages
       uses: actions/configure-pages@v4
+      with:
+        # Auto-enable Pages (build_type: workflow) the first time, using the
+        # job's pages:write token — avoids the "Get Pages site failed / Not
+        # Found" error on repos where Pages was never turned on in Settings.
+        enablement: true
 
     - name: Upload Pages artifact
       uses: actions/upload-pages-artifact@v3
