@@ -11,6 +11,25 @@ tag keeps them out of the upstream `v*` CI that only builds the ESP32-S3 boards;
 the FireBeetle bin is built manually — classic ESP32, ESP-IDF v5.3.3, app at
 `0x10000`, 4 MB / dio / 40 MHz).
 
+## 2.10.2
+
+Pulls two upstream improvements (cherry-picked from
+[aitjcize/esp32-photoframe](https://github.com/aitjcize/esp32-photoframe)) that
+apply to every board.
+
+### Added
+- **WebUI keeps the frame awake while its tab is focused, with an "asleep" hint.**
+  The browser pings `/api/keep_alive` while the WebUI tab is in focus so the frame
+  doesn't deep-sleep out from under you mid-configuration; when it stops
+  responding the UI shows a "Device is asleep" hint naming the board's wakeup
+  key — the **wake button (D7)** on the FireBeetle and **Button 3** on the EE02.
+
+### Changed
+- **Longer auto-sleep timeout during first-time WiFi setup (OOBE).** The frame
+  now waits up to 10 minutes before deep-sleeping while you're still in the
+  out-of-box setup flow, giving more time to join the AP and enter WiFi
+  credentials before it sleeps.
+
 ## 2.10.1
 
 ### Changed
