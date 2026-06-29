@@ -380,11 +380,11 @@ function scrollTo(id) {
               <div class="frame-image">
                 <img
                   :src="`${baseUrl}taipei101_dithered.png`"
-                  alt="Taipei 101 dithered for e-paper"
+                  alt="Kakan the calico, dithered for e-paper"
                 />
               </div>
               <div class="frame-caption">
-                <span>Taipei 101 at dusk</span>
+                <span>Kakan, the calico</span>
                 <span class="frame-meta">Stucki · measured palette</span>
               </div>
             </div>
