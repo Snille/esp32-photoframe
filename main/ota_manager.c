@@ -130,11 +130,19 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt)
 }
 
 static esp_err_t fetch_github_release_info(char *latest_version, size_t version_len,
-                                           char *download_url, size_t url_len)
+                                           char *download_url, size_t url_len, char *err_msg,
+                                           size_t err_msg_len)
 {
     esp_err_t err = ESP_FAIL;
     char *response_buffer = NULL;
     int response_len = 0;
+
+    // Default reason; overwritten at the specific failure points below so the
+    // WebUI/HA can show WHY a check failed (rate limit vs network vs no release)
+    // instead of a single opaque "Failed to check for updates".
+    if (err_msg && err_msg_len) {
+        snprintf(err_msg, err_msg_len, "Failed to check for updates");
+    }
 
     esp_http_client_config_t config = {
         .url = GITHUB_API_URL,
@@ -156,6 +164,9 @@ static esp_err_t fetch_github_release_info(char *latest_version, size_t version_
     err = esp_http_client_open(client, 0);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Failed to open HTTP connection: %s", esp_err_to_name(err));
+        if (err_msg && err_msg_len) {
+            snprintf(err_msg, err_msg_len, "Couldn't reach GitHub (check WiFi)");
+        }
         goto cleanup;
     }
 
@@ -164,6 +175,15 @@ static esp_err_t fetch_github_release_info(char *latest_version, size_t version_
 
     if (status_code != 200) {
         ESP_LOGE(TAG, "HTTP GET failed, status = %d", status_code);
+        if (err_msg && err_msg_len) {
+            if (status_code == 403 || status_code == 429) {
+                // Unauthenticated GitHub API allows only 60 requests/hour per IP;
+                // heavy checking/OTA testing exhausts it and returns 403/429.
+                snprintf(err_msg, err_msg_len, "GitHub rate limit – try again in a while");
+            } else {
+                snprintf(err_msg, err_msg_len, "GitHub returned HTTP %d", status_code);
+            }
+        }
         err = ESP_FAIL;
         goto cleanup;
     }
@@ -265,6 +285,9 @@ static esp_err_t fetch_github_release_info(char *latest_version, size_t version_
 
     if (!found_binary) {
         ESP_LOGE(TAG, "No release with asset %s found", target_binary);
+        if (err_msg && err_msg_len) {
+            snprintf(err_msg, err_msg_len, "No firmware release found for this board");
+        }
         err = ESP_FAIL;
         goto cleanup;
     }
@@ -294,13 +317,14 @@ static void ota_check_task(void *pvParameter)
 
     char latest_version[32] = {0};
     char download_url[256] = {0};
+    char err_msg[64] = {0};
 
     esp_err_t err = fetch_github_release_info(latest_version, sizeof(latest_version), download_url,
-                                              sizeof(download_url));
+                                              sizeof(download_url), err_msg, sizeof(err_msg));
 
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to fetch release info");
-        set_ota_state(OTA_STATE_ERROR, "Failed to check for updates");
+        ESP_LOGE(TAG, "Failed to fetch release info: %s", err_msg);
+        set_ota_state(OTA_STATE_ERROR, err_msg[0] ? err_msg : "Failed to check for updates");
         vTaskDelete(NULL);
         return;
     }

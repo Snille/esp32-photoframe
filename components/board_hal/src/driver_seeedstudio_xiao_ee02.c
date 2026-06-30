@@ -2,7 +2,6 @@
 #include "board_hal.h"
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
-#include "driver/usb_serial_jtag.h"
 #include "epaper.h"
 #include "esp_adc/adc_oneshot.h"
 #include "esp_log.h"
@@ -28,11 +27,15 @@ static const char *TAG = "board_hal_ee02";
 #define VBAT_CAL_SCALE 1.0f
 #endif
 
-// USB detection (VBUS): handled via usb_serial_jtag_is_connected() in
-// board_hal_is_usb_connected() below — VBUS is not broken out to a readable GPIO
-// on this board (rev V1.0), so the USB-Serial/JTAG link state is the signal.
-// Charge status: per the official Seeed EE02 schematic the BQ24070 STAT pins go
-// to LEDs only, not a GPIO — see board_hal_is_charging() below.
+// USB / charge sensing is NOT possible on this board (rev V1.0): VBUS is not
+// broken out to a readable GPIO, and per the official Seeed EE02 schematic the
+// BQ24070 STAT pins drive on-board LEDs only, not a GPIO. The USB-Serial/JTAG
+// link state was tried as a proxy but it only detects a USB *data host* (a PC,
+// not a wall charger), defaults to "connected" until the SOF monitor settles,
+// and is flaky under tickless idle — so it produced false "charging" on battery.
+// We therefore report no charge status from the frame; the server infers charge
+// direction honestly from the battery-voltage trend over time. See
+// board_hal_is_charging() / board_hal_supports_charge_status() below.
 // Verified pin map (rev V1.0): BAT_ADC -> GPIO1 (D0/A0); ADC load-switch enable
 // (TPS22916) -> GPIO6; buttons -> GPIO2/3/5.
 
@@ -155,46 +158,32 @@ int board_hal_get_battery_percent(void)
     return (voltage - 3300) * 100 / (4200 - 3300);
 }
 
-// Battery is treated as essentially full at/above this terminal voltage.
-// During the charger's CV phase the pack sits near 4.2 V while current still
-// tapers, so reaching this threshold means "near full", not strictly complete.
-#define CHARGE_FULL_THRESHOLD_MV 4150
-
 bool board_hal_is_charging(void)
 {
     // The real charge state is NOT detectable on this board (rev V1.0):
     // confirmed against the official Seeed EE02 schematic, the BQ24070 status
     // pins STAT1 (pin 2) / STAT2 (pin 3) drive only the on-board green LEDs
-    // (D5/D16) and are not routed to any ESP32-S3 GPIO. Revisit if a future
-    // board rev breaks STAT out to a GPIO.
-    //
-    // Heuristic instead: if USB is present and the pack is below ~full, assume
-    // it's charging. Consumers distinguish "full" as usb_connected && !charging.
-    // This is an estimate — it flips to "full" during the CV taper (last few %
-    // still going in), and a non-data USB power source may not register as
-    // connected (usb_serial_jtag link state is the only USB signal available).
-    if (!board_hal_is_usb_connected()) {
-        return false;  // on battery → definitely not charging
-    }
-
-    int voltage = board_hal_get_battery_voltage();
-    if (voltage < 0) {
-        return false;  // no reading → don't claim charging
-    }
-
-    return voltage < CHARGE_FULL_THRESHOLD_MV;
+    // (D5/D16) and are not routed to any ESP32-S3 GPIO. The earlier
+    // USB-Serial/JTAG + voltage heuristic produced false positives (see the
+    // header comment), so we no longer guess. Revisit if a future board rev
+    // breaks STAT or VBUS out to a GPIO.
+    return false;
 }
 
 bool board_hal_supports_charge_status(void)
 {
-    // USB detection works (usb_serial_jtag) and is_charging() applies the
-    // USB+voltage heuristic, so we can report charging/full/on_battery.
-    return true;
+    // No reliable on-frame charge/USB-power signal exists on rev V1.0, so don't
+    // report a (misleading) status. The server derives charge direction from the
+    // battery-voltage trend instead.
+    return false;
 }
 
 bool board_hal_is_usb_connected(void)
 {
-    return usb_serial_jtag_is_connected();
+    // VBUS is not readable on rev V1.0; the only USB signal (usb_serial_jtag
+    // link state) detects a data host, not charging power, and is unreliable —
+    // so report nothing rather than a value that misleads the charge logic.
+    return false;
 }
 
 void board_hal_shutdown(void)

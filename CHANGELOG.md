@@ -11,6 +11,30 @@ tag keeps them out of the upstream `v*` CI that only builds the ESP32-S3 boards;
 the FireBeetle bin is built manually — classic ESP32, ESP-IDF v5.3.3, app at
 `0x10000`, 4 MB / dio / 40 MHz).
 
+## 2.10.4
+
+### Fixed
+- **No more false "charging" badge on the XIAO EE02.** The EE02 guessed charge
+  status from `usb_serial_jtag_is_connected()` (USB present) plus battery voltage.
+  That signal is the wrong primitive: it detects a USB *data host* (a PC), never a
+  wall charger; it defaults to "connected" until its SOF monitor settles; and it's
+  flaky under tickless idle — so the frame reported "charging" while running on
+  battery, and flip-flopped between "charging" and a battery % while plugged in.
+  Rev V1.0 hardware genuinely can't sense USB power or charge state (no VBUS GPIO;
+  the BQ24070 STAT pins drive LEDs only — verified against the Seeed schematic), so
+  the frame now reports **no** charge status (`board_hal_supports_charge_status()`
+  → false; `is_charging`/`is_usb_connected` → false). The server still infers
+  charge *direction* honestly from the battery-voltage trend over time (the HA
+  "Battery Trend" sensor), and the on-photo badge shows a steady battery %.
+- **Update check explains *why* it failed instead of a blanket "Failed to check
+  for updates".** The check queries the GitHub API unauthenticated (60 requests/
+  hour per IP), so repeated checks + OTA testing return **403** and the WebUI just
+  said "Failed". `fetch_github_release_info` now surfaces the real reason:
+  "GitHub rate limit – try again in a while" (HTTP 403/429), "GitHub returned
+  HTTP N", "Couldn't reach GitHub (check WiFi)", or "No firmware release found for
+  this board". (When the check *succeeds* and you're current it already says
+  you're on the latest — the old "Failed" was almost always the rate limit.)
+
 ## 2.10.3
 
 ### Fixed
