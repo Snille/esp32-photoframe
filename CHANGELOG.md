@@ -11,6 +11,21 @@ tag keeps them out of the upstream `v*` CI that only builds the ESP32-S3 boards;
 the FireBeetle bin is built manually — classic ESP32, ESP-IDF v5.3.3, app at
 `0x10000`, 4 MB / dio / 40 MHz).
 
+## 2.10.6
+
+### Fixed
+- **Update check works again now that the releases list is served chunked.** As
+  the fork accumulated releases, the GitHub releases-list response grew past the
+  point where GitHub sends a `Content-Length` and switched to
+  `Transfer-Encoding: chunked` (~65 KB). The update check required a positive
+  content length for its single-shot read, so it failed with the generic "Failed
+  to check for updates" on every check — looking like a permanent error (it was
+  *not* the API rate limit). The check now reads the response incrementally into a
+  growable PSRAM buffer until the stream ends, handling both sized and chunked
+  responses (capped at 256 KB). NOTE: a frame already stuck on an older build
+  can't OTA to this fix (its broken check can't discover the release) — it needs
+  one USB flash to break the deadlock; OTA works again afterward.
+
 ## 2.10.5
 
 ### Fixed

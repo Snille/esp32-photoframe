@@ -188,31 +188,59 @@ static esp_err_t fetch_github_release_info(char *latest_version, size_t version_
         goto cleanup;
     }
 
-    if (content_length <= 0) {
-        ESP_LOGE(TAG, "Invalid content length: %d", content_length);
-        err = ESP_FAIL;
-        goto cleanup;
-    }
-
-    if (content_length >= INT_MAX) {
-        ESP_LOGE(TAG, "Content length overflow: %d", content_length);
-        err = ESP_FAIL;
-        goto cleanup;
-    }
-    response_buffer = heap_caps_malloc(content_length + 1, MALLOC_CAP_SPIRAM);
+    // GitHub serves the releases *list* chunked (Transfer-Encoding: chunked, no
+    // Content-Length) once the repo has accumulated enough releases — so
+    // content_length is -1 here and the old single-shot read failed with
+    // "Invalid content length" (the generic check-failed message users saw).
+    // Read the body incrementally into a growable PSRAM buffer until the stream
+    // ends, working for both sized and chunked responses.
+    size_t cap =
+        (content_length > 0 && content_length < INT_MAX) ? (size_t) content_length + 1 : 16384;
+    response_buffer = heap_caps_malloc(cap, MALLOC_CAP_SPIRAM);
     if (response_buffer == NULL) {
         ESP_LOGE(TAG, "Failed to allocate memory for response");
         err = ESP_ERR_NO_MEM;
         goto cleanup;
     }
 
-    response_len = esp_http_client_read_response(client, response_buffer, content_length);
-    if (response_len <= 0) {
-        ESP_LOGE(TAG, "Failed to read response");
+    size_t total = 0;
+    while (true) {
+        // Keep some headroom; grow when nearly full (chunked path).
+        if (cap - total <= 512) {
+            if (cap >= 256 * 1024) {
+                ESP_LOGE(TAG, "Release list exceeds 256 KB; aborting");
+                err = ESP_FAIL;
+                goto cleanup;
+            }
+            size_t new_cap = cap * 2;
+            char *grown = heap_caps_realloc(response_buffer, new_cap, MALLOC_CAP_SPIRAM);
+            if (grown == NULL) {
+                ESP_LOGE(TAG, "Failed to grow response buffer to %u bytes", (unsigned) new_cap);
+                err = ESP_ERR_NO_MEM;
+                goto cleanup;
+            }
+            response_buffer = grown;
+            cap = new_cap;
+        }
+        int r = esp_http_client_read(client, response_buffer + total, cap - total - 1);
+        if (r < 0) {
+            ESP_LOGE(TAG, "Failed to read response");
+            err = ESP_FAIL;
+            goto cleanup;
+        }
+        if (r == 0) {
+            break;  // end of body (sized or chunked)
+        }
+        total += r;
+    }
+
+    if (total == 0) {
+        ESP_LOGE(TAG, "Empty response");
         err = ESP_FAIL;
         goto cleanup;
     }
 
+    response_len = (int) total;
     response_buffer[response_len] = '\0';
 
     // Parse JSON response. GITHUB_API_URL is the releases *list* endpoint, so the
