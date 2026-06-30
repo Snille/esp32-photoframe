@@ -2269,6 +2269,9 @@ static esp_err_t ota_status_handler(httpd_req_t *req)
     case OTA_STATE_ERROR:
         state_str = "error";
         break;
+    case OTA_STATE_UP_TO_DATE:
+        state_str = "up_to_date";
+        break;
     }
 
     cJSON_AddStringToObject(response, "state", state_str);

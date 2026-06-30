@@ -375,7 +375,9 @@ static void ota_check_task(void *pvParameter)
     } else {
         ESP_LOGI(TAG, "Already on latest version: %s", ota_status.current_version);
         update_available = false;
-        set_ota_state(OTA_STATE_IDLE, NULL);
+        // Distinct from IDLE (= never checked) so the WebUI can confirm "you're
+        // on the latest version" instead of showing a blank result.
+        set_ota_state(OTA_STATE_UP_TO_DATE, NULL);
     }
 
     // Update last check time after successful check

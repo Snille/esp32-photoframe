@@ -46,6 +46,7 @@ const statusType = computed(() => {
   switch (otaState.value) {
     case "update_available":
     case "success":
+    case "up_to_date":
       return "success";
     case "error":
       return "error";

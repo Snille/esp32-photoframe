@@ -12,7 +12,8 @@ typedef enum {
     OTA_STATE_DOWNLOADING,
     OTA_STATE_INSTALLING,
     OTA_STATE_SUCCESS,
-    OTA_STATE_ERROR
+    OTA_STATE_ERROR,
+    OTA_STATE_UP_TO_DATE  // checked, no newer release — distinct from IDLE (never checked)
 } ota_state_t;
 
 typedef struct {

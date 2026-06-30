@@ -11,6 +11,16 @@ tag keeps them out of the upstream `v*` CI that only builds the ESP32-S3 boards;
 the FireBeetle bin is built manually — classic ESP32, ESP-IDF v5.3.3, app at
 `0x10000`, 4 MB / dio / 40 MHz).
 
+## 2.10.7
+
+### Fixed
+- **The update check now confirms "You're running the latest version".** When a
+  check found no newer release the firmware reported the plain `idle` state, which
+  the WebUI renders as a blank result — so an up-to-date frame just showed nothing
+  after CHECK. It now reports a distinct `up_to_date` state (separate from "never
+  checked"), and the WebUI shows a green "You're running the latest version."
+  confirmation.
+
 ## 2.10.6
 
 ### Fixed
