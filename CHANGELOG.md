@@ -11,6 +11,28 @@ tag keeps them out of the upstream `v*` CI that only builds the ESP32-S3 boards;
 the FireBeetle bin is built manually — classic ESP32, ESP-IDF v5.3.3, app at
 `0x10000`, 4 MB / dio / 40 MHz).
 
+## 2.10.5
+
+### Fixed
+- **XIAO EE02: stable, consistent battery reading under WiFi load.** The pack
+  voltage and percentage were read as two separate ADC acquisitions during the
+  image pull, and a single read could land entirely inside a WiFi-TX current
+  burst that sags the rail — so the frame occasionally reported garbage like
+  "0 % @ 4090 mV" or a sub-3 V "collapse" while actually sitting at ~84 %. The
+  EE02 driver now (a) takes a few reads and keeps the plausible ones (rejecting
+  transient sub-3.3 V collapses), and (b) caches the result so percent is derived
+  from the *same* voltage acquisition — the two can no longer disagree. This also
+  stops the server from drawing a false "charging" bolt on battery (it had treated
+  the collapsed readings as "plugged in").
+- **WebUI auto-reloads after an OTA update.** After "Update successful! Device
+  will reboot…" the page used to sit on that message until you manually refreshed.
+  The OTA panel now watches for the device dropping offline (reboot starting) and
+  coming back reachable, then reloads the page automatically so the new version and
+  state show without a manual refresh (with a ~90 s safety-timeout fallback and an
+  indeterminate progress bar while it waits). Note: this fix ships *in* the webapp,
+  so it takes effect from the next OTA onward — the update that installs it still
+  reboots the old page once.
+
 ## 2.10.4
 
 ### Fixed

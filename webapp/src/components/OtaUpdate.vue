@@ -8,6 +8,8 @@ const progress = ref(0);
 const errorMessage = ref("");
 
 let statusPollInterval = null;
+let rebootWatchStarted = false;
+const rebooting = ref(false);
 
 const updateAvailable = computed(() => otaState.value === "update_available");
 const checking = computed(() => otaState.value === "checking");
@@ -28,7 +30,9 @@ const statusMessage = computed(() => {
     case "installing":
       return "Installing firmware...";
     case "success":
-      return "Update successful! Device will reboot...";
+      return rebooting.value
+        ? "Update successful! Waiting for the device to reboot — this page reloads automatically…"
+        : "Update successful! Device will reboot...";
     case "error":
       return errorMessage.value || "Update failed";
     case "up_to_date":
@@ -67,11 +71,55 @@ async function loadOTAStatus() {
     progress.value = data.progress_percent || 0;
     errorMessage.value = data.error_message || "";
 
-    // If state is idle and we were checking, it means check completed with no update
-    // The state should transition appropriately based on the backend response
+    // After a successful update the device reboots into the new firmware, but the
+    // page would otherwise sit on the "success" message until manually refreshed.
+    // Watch for the device dropping offline and coming back, then auto-reload so
+    // the new version/state shows without the user having to refresh.
+    if (otaState.value === "success") {
+      watchForRebootAndReload();
+    }
   } catch (error) {
     console.error("Failed to load OTA status:", error);
   }
+}
+
+// Resolve once the device has gone offline (reboot started) and is reachable
+// again, or after a safety timeout; then reload the page. Reloading while the
+// device is up is harmless, so the timeout fallback just guarantees we recover
+// even if we miss the brief offline window.
+async function watchForRebootAndReload() {
+  if (rebootWatchStarted) return;
+  rebootWatchStarted = true;
+  rebooting.value = true;
+  stopStatusPolling();
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const probe = async () => {
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), 2000);
+    try {
+      const r = await fetch("/api/ota/status", {
+        signal: controller.signal,
+        cache: "no-store",
+      });
+      return r.ok;
+    } catch {
+      return false; // unreachable → rebooting
+    } finally {
+      clearTimeout(t);
+    }
+  };
+
+  await sleep(3000); // let the reboot actually begin before probing
+  const deadline = Date.now() + 90000; // ~90s safety cap
+  let sawOffline = false;
+  while (Date.now() < deadline) {
+    const up = await probe();
+    if (up && sawOffline) break; // went down and is back → new firmware is live
+    if (!up) sawOffline = true;
+    await sleep(1500);
+  }
+  window.location.reload();
 }
 
 async function checkForUpdate() {
@@ -206,6 +254,13 @@ onUnmounted(() => {
         <div v-if="installing" class="mt-4">
           <v-progress-linear :model-value="progress" color="primary" height="8" rounded />
           <p class="text-body-2 text-center mt-2">{{ progress }}%</p>
+        </div>
+      </v-expand-transition>
+
+      <!-- Reboot wait indicator -->
+      <v-expand-transition>
+        <div v-if="rebooting" class="mt-4">
+          <v-progress-linear indeterminate color="success" height="8" rounded />
         </div>
       </v-expand-transition>
 
