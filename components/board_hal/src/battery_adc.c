@@ -53,13 +53,28 @@ esp_err_t battery_adc_create(const battery_adc_config_t *cfg, battery_adc_t **ou
     // eFuse-based calibration converts raw counts to accurate millivolts; the
     // ESP32-S3 ADC is nonlinear, so the raw*3300/4095 estimate drifts. If it is
     // unavailable, battery_adc_read_mv() falls back to that linear estimate.
+    // The S3-family chips use the curve-fitting scheme; the classic ESP32 only
+    // provides line fitting, so pick whichever the target supports.
+    esp_err_t cali_ret;
+#if ADC_CALI_SCHEME_CURVE_FITTING_SUPPORTED
     adc_cali_curve_fitting_config_t cali_config = {
         .unit_id = cfg->unit,
         .chan = cfg->channel,
         .atten = cfg->atten,
         .bitwidth = ADC_BITWIDTH_DEFAULT,
     };
-    if (adc_cali_create_scheme_curve_fitting(&cali_config, &ctx->cali) != ESP_OK) {
+    cali_ret = adc_cali_create_scheme_curve_fitting(&cali_config, &ctx->cali);
+#elif ADC_CALI_SCHEME_LINE_FITTING_SUPPORTED
+    adc_cali_line_fitting_config_t cali_config = {
+        .unit_id = cfg->unit,
+        .atten = cfg->atten,
+        .bitwidth = ADC_BITWIDTH_DEFAULT,
+    };
+    cali_ret = adc_cali_create_scheme_line_fitting(&cali_config, &ctx->cali);
+#else
+    cali_ret = ESP_ERR_NOT_SUPPORTED;
+#endif
+    if (cali_ret != ESP_OK) {
         ESP_LOGW(TAG, "ADC calibration unavailable; using linear estimate");
         ctx->cali = NULL;
     }
@@ -112,8 +127,13 @@ void battery_adc_destroy(battery_adc_t *ctx)
 {
     if (!ctx)
         return;
-    if (ctx->cali)
+    if (ctx->cali) {
+#if ADC_CALI_SCHEME_CURVE_FITTING_SUPPORTED
         adc_cali_delete_scheme_curve_fitting(ctx->cali);
+#elif ADC_CALI_SCHEME_LINE_FITTING_SUPPORTED
+        adc_cali_delete_scheme_line_fitting(ctx->cali);
+#endif
+    }
     if (ctx->adc)
         adc_oneshot_del_unit(ctx->adc);
     free(ctx);
