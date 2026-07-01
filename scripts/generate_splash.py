@@ -145,19 +145,29 @@ def _rounded_cat(size, radius):
 def compose(view_w, view_h, kind):
     """Compose the splash in the viewing orientation.
 
-    Returns (PIL.Image, (qr_x, qr_y, qr_size)) where the QR rect is the white box
-    the firmware draws its live QR into.
+    Returns (PIL.Image, (qr_x, qr_y, qr_size), ip_anchor) where the QR rect is the
+    white box the firmware fills with its live QR, and ip_anchor is
+    (center_x, bottom_y, height) in *viewing* coords for the runtime IP line on
+    the setup-complete screen (None for the OOBE splash). The IP text itself is
+    NOT baked in — the firmware draws the live IP there via GUI_Paint.
+
+    Unified layout (both screens): the title's top edge aligns with the cat's top
+    edge, and the bottom element (QR on the OOBE splash, the IP line on
+    setup-complete) has its bottom edge aligned with the cat's bottom edge — so
+    the text column visually spans the same height as Kakan.
     """
     title, subtitle = TEXTS[kind]
     img = Image.new("RGB", (view_w, view_h), BG)
     d = ImageDraw.Draw(img)
     landscape = view_w >= view_h
+    ip_anchor = None
 
     if landscape:
-        # Cat on the left, title/subtitle/QR stacked on the right.
+        # Cat on the left, title/subtitle/QR (+IP) stacked on the right.
         cs = int(view_h * 0.66)
         cx = int(view_w * 0.06)
         cy = (view_h - cs) // 2
+        cat_top, cat_bot = cy, cy + cs
         rad = int(cs * 0.12)
         cat, mask = _rounded_cat(cs, rad)
         img.paste(cat, (cx, cy), mask)
@@ -172,32 +182,48 @@ def compose(view_w, view_h, kind):
         rcw = view_w - rx - int(view_w * 0.04)
         rcx = rx + rcw // 2
 
-        ty = int(view_h * 0.10)
-        _ctext(d, title, rcx, ty, _fit_font(d, title, rcw, view_h * 0.115), WHITE)
+        # Title top-aligned with the cat's top edge.
+        tf = _fit_font(d, title, rcw, view_h * 0.135)
+        _ctext(d, title, rcx, cat_top, tf, WHITE)
+        tb = d.textbbox((0, 0), title, font=tf)
+        title_bot = cat_top + (tb[3] - tb[1]) + int(view_h * 0.02)
+
+        # Green accent bar.
+        bar_y = title_bot + int(view_h * 0.02)
         d.rounded_rectangle(
             [
                 rcx - int(view_w * 0.06),
-                ty + int(view_h * 0.135),
+                bar_y,
                 rcx + int(view_w * 0.06),
-                ty + int(view_h * 0.155),
+                bar_y + int(view_h * 0.02),
             ],
             radius=3,
             fill=GREEN,
         )
-        _ctext(
-            d,
-            subtitle,
-            rcx,
-            int(view_h * 0.30),
-            _fit_font(d, subtitle, rcw, view_h * 0.05, bold=False),
-            MUTED,
-        )
 
-        qs = int(min(rcw, view_h) * 0.46)
+        # Subtitle.
+        sf = _fit_font(d, subtitle, rcw, view_h * 0.05, bold=False)
+        sub_y = bar_y + int(view_h * 0.05)
+        _ctext(d, subtitle, rcx, sub_y, sf, MUTED)
+        sb = d.textbbox((0, 0), subtitle, font=sf)
+        sub_bot = sub_y + (sb[3] - sb[1])
+
+        # Reserve the IP line (setup-complete) with its bottom at the cat bottom.
+        # ip_h matches the subtitle size so "IP: …" reads at the same scale.
+        if kind == "setup_complete":
+            ip_h = int(view_h * 0.05)
+            ip_anchor = (rcx, cat_bot, ip_h, rcw)
+            band_bot = cat_bot - ip_h - int(view_h * 0.03)
+        else:
+            band_bot = cat_bot
+
+        # QR fills the band between the subtitle and the bottom element, bottom-anchored.
+        band_top = sub_bot + int(view_h * 0.05)
+        qs = min(band_bot - band_top, rcw)
         qx = rcx - qs // 2
-        qy = int(view_h * 0.42)
+        qy = band_bot - qs
     else:
-        # Portrait: cat on top, title/subtitle/QR below.
+        # Portrait: cat on top, title/subtitle/QR (+IP) below.
         cs = int(view_w * 0.62)
         cx = (view_w - cs) // 2
         cy = int(view_h * 0.07)
@@ -243,12 +269,20 @@ def compose(view_w, view_h, kind):
         qs = int(view_w * 0.42)
         qx = cxc - qs // 2
         qy = ty + int(view_w * 0.30)
+        if kind == "setup_complete":
+            ip_h = int(view_w * 0.05)
+            ip_anchor = (
+                cxc,
+                qy + qs + int(view_w * 0.03) + ip_h,
+                ip_h,
+                int(view_w * 0.9),
+            )
 
     # White QR slot (firmware draws the live QR modules into this box at runtime).
     d.rounded_rectangle(
         [qx - 6, qy - 6, qx + qs + 6, qy + qs + 6], radius=6, fill=(255, 255, 255)
     )
-    return img, (qx, qy, qs)
+    return img, (qx, qy, qs), ip_anchor
 
 
 def to_native(img, rect, view_w, view_h, deg):
@@ -305,9 +339,15 @@ def png_to_epdgz(png_path, output_dir, width, height):
         return False
 
 
-def generate_meta_header(splash_meta, setup_meta, output_path):
+def generate_meta_header(splash_meta, setup_meta, setup_ip, rot, output_path):
     sx, sy, ss = splash_meta
     cx, cy, cs = setup_meta
+    # IP line anchor for the setup-complete screen, in *viewing* (logical) coords.
+    # The firmware draws it with GUI_Paint using SPLASH_ROTATE_DEG (the SAME
+    # rotation baked into the pre-rotated background here) so the text lands
+    # aligned + upright — NOT the runtime display_rotation_deg, which isn't set to
+    # this value yet at OOBE. (The QR is drawn separately in native coords.)
+    ipx, ipbottom, iph, ipmaxw = setup_ip if setup_ip else (0, 0, 0, 0)
     content = (
         "// Auto-generated splash screen metadata\n"
         "// Do not edit manually\n"
@@ -321,6 +361,19 @@ def generate_meta_header(splash_meta, setup_meta, output_path):
         f"#define SETUP_COMPLETE_QR_X {cx}\n"
         f"#define SETUP_COMPLETE_QR_Y {cy}\n"
         f"#define SETUP_COMPLETE_QR_SIZE {cs}\n"
+        "\n"
+        "// Setup complete screen - live IP text anchor (viewing/logical coords):\n"
+        "// horizontal centre, bottom edge, and target text height. The firmware\n"
+        "// draws the device IP centred at IP_CX with its bottom at IP_BOTTOM.\n"
+        f"#define SETUP_COMPLETE_IP_CX {ipx}\n"
+        f"#define SETUP_COMPLETE_IP_BOTTOM {ipbottom}\n"
+        f"#define SETUP_COMPLETE_IP_HEIGHT {iph}\n"
+        f"#define SETUP_COMPLETE_IP_MAXW {ipmaxw}\n"
+        "\n"
+        "// GUI_Paint rotation that matches the pre-rotated splash background, so\n"
+        "// runtime-drawn text (the IP) lands aligned + upright regardless of the\n"
+        "// device's stored display_rotation_deg (which is unset at OOBE).\n"
+        f"#define SPLASH_ROTATE_DEG {rot}\n"
     )
     with open(output_path, "w") as f:
         f.write(content)
@@ -364,14 +417,20 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
 
     all_meta = {}
+    ip_meta = {}
     for name in ("splash", "setup_complete"):
         print(
             f"\n=== {name} (view {view_w}x{view_h} -> native {native_w}x{native_h}, rot {rot}) ==="
         )
-        view_img, rect = compose(view_w, view_h, name)
+        view_img, rect, ip_anchor = compose(view_w, view_h, name)
         native_img, nrect = to_native(view_img, rect, view_w, view_h, rot)
         all_meta[name] = nrect
+        ip_meta[name] = ip_anchor
         print(f"  QR slot (native): x={nrect[0]} y={nrect[1]} size={nrect[2]}")
+        if ip_anchor:
+            print(
+                f"  IP anchor (viewing): cx={ip_anchor[0]} bottom={ip_anchor[1]} h={ip_anchor[2]}"
+            )
 
         png_path = os.path.join(args.output_dir, f"{name}.png")
         native_img.save(png_path)
@@ -388,7 +447,13 @@ def main():
             os.unlink(thumb)
 
     meta_path = os.path.join(args.output_dir, "splash_meta.h")
-    generate_meta_header(all_meta["splash"], all_meta["setup_complete"], meta_path)
+    generate_meta_header(
+        all_meta["splash"],
+        all_meta["setup_complete"],
+        ip_meta["setup_complete"],
+        rot,
+        meta_path,
+    )
     print(f"\n  Metadata: {meta_path}")
 
 

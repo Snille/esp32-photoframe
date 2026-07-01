@@ -4,6 +4,7 @@
 #include <string.h>
 #include <zlib.h>
 
+#include "GUI_Paint.h"
 #include "board_hal.h"
 #include "display_manager.h"
 #include "epaper.h"
@@ -12,6 +13,7 @@
 #include "qrcode.h"
 #include "splash_data/splash_meta.h"
 #include "utils.h"
+#include "wifi_manager.h"
 
 static const char *TAG = "splash_screen";
 
@@ -39,6 +41,57 @@ static void set_pixel(uint8_t *buffer, int width, int x, int y, uint8_t color)
         buffer[byte_idx] = (buffer[byte_idx] & 0x0F) | (color << 4);
     } else {
         buffer[byte_idx] = (buffer[byte_idx] & 0xF0) | (color & 0x0F);
+    }
+}
+
+/**
+ * Draw a scaled ASCII string straight into the native e-paper buffer, mapping
+ * every glyph pixel from the viewing (mounting) orientation into native panel
+ * coords with the SAME rotation the QR + pre-rotated background use — so the
+ * text lands aligned and upright without any GUI_Paint rotation/bounds
+ * ambiguity. `deg` is SPLASH_ROTATE_DEG (the rotation generate_splash baked in).
+ * (start_x, start_y) is the string's top-left in viewing coords.
+ */
+static void splash_draw_text_native(uint8_t *buffer, const char *text, const sFONT *font,
+                                    int start_x, int start_y, int scale, int deg, uint8_t color)
+{
+    const int native_w = BOARD_HAL_DISPLAY_WIDTH;
+    const int native_h = BOARD_HAL_DISPLAY_HEIGHT;
+    const int bytes_per_row = font->Width / 8 + (font->Width % 8 ? 1 : 0);
+
+    for (int i = 0; text[i] != '\0'; i++) {
+        unsigned char ch = (unsigned char) text[i];
+        if (ch < ' ')
+            continue;
+        const uint8_t *glyph = &font->table[(ch - ' ') * font->Height * bytes_per_row];
+        int char_x = start_x + i * font->Width * scale;
+
+        for (int page = 0; page < font->Height; page++) {
+            const uint8_t *row = glyph + page * bytes_per_row;
+            for (int col = 0; col < font->Width; col++) {
+                if (!(row[col / 8] & (0x80 >> (col % 8))))
+                    continue;
+                // Filled font pixel -> a scale x scale block in viewing space.
+                for (int sy = 0; sy < scale; sy++) {
+                    for (int sx = 0; sx < scale; sx++) {
+                        int vx = char_x + col * scale + sx;
+                        int vy = start_y + page * scale + sy;
+                        int nx, ny;
+                        if (deg == 90) {  // matches to_native(90) = PIL ROTATE_270
+                            nx = native_w - 1 - vy;
+                            ny = vx;
+                        } else if (deg == 270) {  // matches to_native(270) = PIL ROTATE_90
+                            nx = vy;
+                            ny = native_h - 1 - vx;
+                        } else {  // deg == 0: viewing == native
+                            nx = vx;
+                            ny = vy;
+                        }
+                        set_pixel(buffer, native_w, nx, ny, color);
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -302,6 +355,33 @@ esp_err_t splash_screen_display_setup_complete(const char *hostname)
         if (owns_buffer)
             heap_caps_free(epd_buffer);
         return ret;
+    }
+
+    // Draw the device's IP under the QR code. The IP is only known at runtime so
+    // it is NOT baked into the splash art — we render it live. SETUP_COMPLETE_IP_*
+    // are viewing/logical coords; splash_draw_text_native maps every pixel into
+    // the native buffer with SPLASH_ROTATE_DEG (the same rotation the QR +
+    // background use), and white (EPD_WHITE) reads on the black background.
+    char ip[20] = "";
+    wifi_manager_get_ip(ip, sizeof(ip));
+    if (ip[0] != '\0' && strchr(ip, '.') != NULL && SETUP_COMPLETE_IP_HEIGHT > 0) {
+        char ipline[28];
+        snprintf(ipline, sizeof(ipline), "IP: %s", ip);
+        // Floor to the largest whole Font24 scale that fits the target height, so
+        // the line reads at roughly the subtitle size (never rounding up larger).
+        int scale = SETUP_COMPLETE_IP_HEIGHT / Font24.Height;
+        if (scale < 1)
+            scale = 1;
+        int char_w = (int) strlen(ipline) * Font24.Width;
+        // Shrink to fit the reserved column width so a long IP never overflows.
+        while (scale > 1 && char_w * scale > SETUP_COMPLETE_IP_MAXW)
+            scale--;
+        int start_x = SETUP_COMPLETE_IP_CX - (char_w * scale) / 2;
+        int start_y = SETUP_COMPLETE_IP_BOTTOM - Font24.Height * scale;
+        splash_draw_text_native(epd_buffer, ipline, &Font24, start_x, start_y, scale,
+                                SPLASH_ROTATE_DEG % 360, EPD_WHITE);
+        ESP_LOGI(TAG, "Drew '%s' at viewing (%d,%d) scale %d rot %d", ipline, start_x, start_y,
+                 scale, SPLASH_ROTATE_DEG);
     }
 
     ESP_LOGI(TAG, "Displaying setup complete screen");
