@@ -5,6 +5,8 @@
     "display": "7.3\" 6-color",
     "resolution": [800, 480],
     "storage": "SD card (SDIO)",
+    "chip": "esp32s3",
+    "flash_size": "16MB",
     "url": "https://www.waveshare.com/wiki/ESP32-S3-PhotoPainter"
   },
   {
@@ -13,6 +15,8 @@
     "display": "13.3\" 6-color",
     "resolution": [1200, 1600],
     "storage": "Internal flash",
+    "chip": "esp32s3",
+    "flash_size": "16MB",
     "url": "https://www.seeedstudio.com/XIAO-ePaper-DIY-Kit-EE02-for-13-3-Spectratm-6-E-Ink.html"
   },
   {
@@ -21,6 +25,8 @@
     "display": "7.3\" 6-color",
     "resolution": [800, 480],
     "storage": "Internal flash",
+    "chip": "esp32s3",
+    "flash_size": "16MB",
     "url": "https://www.seeedstudio.com/XIAO-ePaper-EE04-DIY-Bundle-Kit.html"
   },
   {
@@ -29,6 +35,8 @@
     "display": "7.3\" 6-color",
     "resolution": [800, 480],
     "storage": "SD (SPI) + Internal flash",
+    "chip": "esp32s3",
+    "flash_size": "32MB",
     "url": "https://www.seeedstudio.com/reTerminal-E1002-p-6533.html"
   },
   {
@@ -37,6 +45,8 @@
     "display": "4\" 6-color (Spectra 6)",
     "resolution": [600, 400],
     "storage": "None (RAM-based MemFS)",
+    "chip": "esp32",
+    "flash_size": "4MB",
     "url": "https://www.dfrobot.com/product-2195.html"
   }
 ]

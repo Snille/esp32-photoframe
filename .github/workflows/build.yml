@@ -254,6 +254,29 @@ jobs:
             ${STABLE_TAG:+--stable-version "$STABLE_TAG"}
         done
 
+        # ── FireBeetle (classic ESP32) web-flash assets ──────────────────────
+        # The FireBeetle is NOT in the build matrix (classic esp32 / IDF v5.3.3,
+        # app at 0x10000), so it has no CI artifact. Its web-flash firmware comes
+        # from the latest published `firebeetle-v*` release instead (cut manually
+        # with the classic-esp32 merge recipe). If none exists yet the flasher
+        # entry is simply skipped rather than 404-ing.
+        FB_BOARD="dfrobot_firebeetle_esp32e"
+        FB_TAG=$(gh release list --limit 30 --json tagName,isDraft,isPrerelease \
+          --jq '[.[] | select(.isDraft==false and .isPrerelease==false and (.tagName|startswith("firebeetle-v")))][0].tagName' 2>/dev/null || echo "")
+        if [[ -n "$FB_TAG" ]]; then
+          mkdir -p "demo/$FB_BOARD"
+          if gh release download "$FB_TAG" --pattern "photoframe-firmware-$FB_BOARD-merged.bin" --dir "demo/$FB_BOARD" --clobber; then
+            echo "Downloaded FireBeetle web-flash firmware ${FB_TAG}"
+            # No separate dev build for the FireBeetle: dev mirrors stable.
+            cp "demo/$FB_BOARD/photoframe-firmware-$FB_BOARD-merged.bin" "demo/$FB_BOARD/photoframe-firmware-$FB_BOARD-dev.bin"
+            python3 scripts/generate_manifests.py --no-copy --dev --demo-dir "demo/$FB_BOARD" --board "$FB_BOARD" --stable-version "$FB_TAG"
+          else
+            echo "Warning: FireBeetle release ${FB_TAG} has no merged bin asset; skipping FireBeetle web flash"
+          fi
+        else
+          echo "No published firebeetle-v* release found; skipping FireBeetle web flash"
+        fi
+
         # Link a default manifest at the root of demo for backward compatibility or default view
         cp demo/waveshare_photopainter_73/manifest.json demo/
         cp demo/waveshare_photopainter_73/manifest-dev.json demo/

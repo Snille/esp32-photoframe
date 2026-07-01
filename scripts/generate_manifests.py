@@ -18,7 +18,40 @@ from pathlib import Path
 # Import version detection functions from get_version module
 import get_version as version_module
 
-from boards import SUPPORTED_BOARDS
+from boards import BOARDS_BY_ID, SUPPORTED_BOARDS
+
+# Per-chip flash layout for the merged (fresh-install) binary + the ESP Web Tools
+# manifest. The S3 boards flash the merged image from 0x0; the classic ESP32
+# (FireBeetle) puts its bootloader at 0x1000 and app at 0x10000 (single factory
+# partition, no OTA). esptool merge-bin pads from 0x0 in both cases, so the
+# manifest part offset stays 0 — only the chipFamily and the merge offsets/freq
+# differ.
+CHIP_LAYOUT = {
+    "esp32s3": {
+        "chip_family": "ESP32-S3",
+        "flash_freq": "80m",
+        "offsets": {"bootloader": "0x0", "partition_table": "0x8000", "app": "0x20000"},
+    },
+    "esp32": {
+        "chip_family": "ESP32",
+        "flash_freq": "40m",
+        "offsets": {
+            "bootloader": "0x1000",
+            "partition_table": "0x8000",
+            "app": "0x10000",
+        },
+    },
+}
+
+
+def board_chip(board):
+    """Chip family id for a board (defaults to esp32s3 for the S3 matrix)."""
+    return BOARDS_BY_ID.get(board, {}).get("chip", "esp32s3")
+
+
+def board_flash_size(board):
+    """Flash size for a board (defaults to 16MB for the S3 matrix)."""
+    return BOARDS_BY_ID.get(board, {}).get("flash_size", "16MB")
 
 
 def check_firmware_exists(firmware_path):
@@ -44,29 +77,33 @@ def copy_firmware_to_demo(build_dir, demo_dir, board):
         print("Error: Firmware files not found. Please build first with: idf.py build")
         return False
 
-    # Create merged firmware using esptool
+    # Create merged firmware using esptool (chip-aware: S3 vs classic ESP32)
     merged_bin = os.path.join(demo_dir, f"photoframe-firmware-{board}-merged.bin")
+
+    chip = board_chip(board)
+    layout = CHIP_LAYOUT[chip]
+    off = layout["offsets"]
 
     try:
         subprocess.run(
             [
                 "esptool",
                 "--chip",
-                "esp32s3",
+                chip,
                 "merge-bin",
                 "-o",
                 merged_bin,
                 "--flash-mode",
                 "dio",
                 "--flash-freq",
-                "80m",
+                layout["flash_freq"],
                 "--flash-size",
-                "16MB",
-                "0x0",
+                board_flash_size(board),
+                off["bootloader"],
                 bootloader,
-                "0x8000",
+                off["partition_table"],
                 partition_table,
-                "0x20000",
+                off["app"],
                 app_bin,
             ],
             check=True,
@@ -83,6 +120,7 @@ def generate_manifest(output_path, version, firmware_file, board, is_dev=False):
     """Generate a manifest.json file."""
 
     board_display = SUPPORTED_BOARDS.get(board, board)
+    chip_family = CHIP_LAYOUT[board_chip(board)]["chip_family"]
 
     manifest = {
         "name": f"ESP32 PhotoFrame {board_display}{' (Development)' if is_dev else ''}",
@@ -91,7 +129,7 @@ def generate_manifest(output_path, version, firmware_file, board, is_dev=False):
         "new_install_prompt_erase": True,
         "new_install_improv_wait_time": 15,
         "builds": [
-            {"chipFamily": "ESP32-S3", "parts": [{"path": firmware_file, "offset": 0}]}
+            {"chipFamily": chip_family, "parts": [{"path": firmware_file, "offset": 0}]}
         ],
     }
 

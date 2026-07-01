@@ -195,16 +195,19 @@ watch(selectedBoard, () => loadVersionInfo());
 
 async function loadVersionInfo() {
   try {
-    // The fork carries two release lines — S3 boards (`v*`, what this web
-    // flasher serves) and the FireBeetle (`firebeetle-v*`). `/releases/latest`
-    // returns whichever was published most recently regardless of line, so
-    // fetch the list and pick the newest published `v*` release instead.
+    // The fork carries two release lines — S3 boards (`v*`) and the classic-ESP32
+    // FireBeetle (`firebeetle-v*`). `/releases/latest` returns whichever was
+    // published most recently regardless of line, so fetch the list and pick the
+    // newest published release on the line that matches the selected board.
     const stableResponse = await fetch(
       "https://api.github.com/repos/Snille/esp32-photoframe/releases?per_page=30"
     );
     const releases = await stableResponse.json();
+    // FireBeetle (chip esp32) tracks firebeetle-v*; everything else tracks v*.
+    const isFirebeetle = selectedBoardMeta.value?.chip === "esp32";
+    const lineRe = isFirebeetle ? /^firebeetle-v\d/ : /^v\d/;
     const stable = Array.isArray(releases)
-      ? releases.find((r) => !r.draft && !r.prerelease && /^v\d/.test(r.tag_name))
+      ? releases.find((r) => !r.draft && !r.prerelease && lineRe.test(r.tag_name))
       : null;
     stableVersion.value = stable ? stable.tag_name : "unknown";
 
@@ -367,7 +370,7 @@ function scrollTo(id) {
               <button class="btn btn-ghost" @click="scrollTo('flash')">Flash my frame</button>
             </div>
             <div class="hero-meta">
-              <span><strong>4</strong> boards</span>
+              <span><strong>5</strong> boards</span>
               <span class="dot">·</span>
               <span><strong>6-color</strong> e-paper</span>
               <span class="dot">·</span>
@@ -528,8 +531,8 @@ function scrollTo(id) {
         </div>
         <h2 class="section-title">Off-the-shelf boards, <em class="wonk">opened</em> up.</h2>
         <p class="section-lede">
-          Bring your own hardware. Four ESP32-S3 photoframes are supported today, with shared image
-          pipeline and configuration.
+          Bring your own hardware. Four ESP32-S3 photoframes plus the classic-ESP32 DFRobot
+          FireBeetle are supported today, with a shared image pipeline and configuration.
         </p>
 
         <div class="board-grid">
