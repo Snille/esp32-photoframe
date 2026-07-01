@@ -8,6 +8,7 @@ set(SOURCES
     "ha_integration.c"
     "http_server.c"
     "image_processor.c"
+    "improv_serial.c"
     "main.c"
     "mdns_service.c"
     "ota_manager.c"
@@ -33,6 +34,8 @@ set(PRIV_REQUIRES
     epaper_src
     esp_app_format
     esp_driver_gpio
+    esp_driver_uart
+    esp_driver_usb_serial_jtag
     esp_event
     esp_http_client
     esp_http_server

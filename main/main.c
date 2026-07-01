@@ -28,6 +28,7 @@
 
 #include "ha_integration.h"
 #include "http_server.h"
+#include "improv_serial.h"
 #include "image_processor.h"
 #include "mdns_service.h"
 #include "memfs.h"
@@ -496,6 +497,14 @@ void app_main(void)
             ESP_LOGI(TAG, "===========================================");
 
             ESP_ERROR_CHECK(wifi_provisioning_start_ap());
+
+            // Option 3: Improv-Serial — accept Wi-Fi credentials straight over
+            // USB from the browser flasher (ESP Web Tools), no AP join needed.
+            // Runs alongside the captive portal; on success it saves credentials
+            // to NVS, which the loop below detects.
+            ESP_LOGI(TAG, "Option 3: Improv-Serial via the browser flasher (over USB)");
+            ESP_LOGI(TAG, "===========================================");
+            improv_serial_start();
 
             while (!wifi_provisioning_is_provisioned()) {
                 vTaskDelay(pdMS_TO_TICKS(1000));

@@ -8,3 +8,8 @@ CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
 
 # Internal flash storage (LittleFS)
 CONFIG_USE_INTERNAL_FLASH_STORAGE=y
+
+# Route the console to the native USB-Serial-JTAG port (the same port used for
+# flashing). This makes boot logs visible over the single USB cable and lets the
+# browser flasher (ESP Web Tools) hand over Wi-Fi credentials via Improv-Serial.
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
