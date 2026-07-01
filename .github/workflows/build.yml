@@ -20,16 +20,41 @@ jobs:
       contents: write
     strategy:
       matrix:
-        board: [waveshare_photopainter_73, seeedstudio_xiao_ee02, seeedstudio_reterminal_e1002, seeedstudio_xiao_ee04]
+        board: [waveshare_photopainter_73, seeedstudio_xiao_ee02, seeedstudio_reterminal_e1002, seeedstudio_xiao_ee04, dfrobot_firebeetle_esp32e]
         include:
+          # target/flash params per board — the classic-ESP32 FireBeetle differs
+          # (esp32, bootloader at 0x1000, app at 0x10000, 4MB/40m) from the S3
+          # boards (esp32s3, 0x0/0x20000, 80m). All build on ESP-IDF v6.0.
           - board: waveshare_photopainter_73
+            target: esp32s3
             flash_size: 16MB
+            flash_freq: 80m
+            bootloader_offset: "0x0"
+            app_offset: "0x20000"
           - board: seeedstudio_xiao_ee02
+            target: esp32s3
             flash_size: 16MB
+            flash_freq: 80m
+            bootloader_offset: "0x0"
+            app_offset: "0x20000"
           - board: seeedstudio_reterminal_e1002
+            target: esp32s3
             flash_size: 32MB
+            flash_freq: 80m
+            bootloader_offset: "0x0"
+            app_offset: "0x20000"
           - board: seeedstudio_xiao_ee04
+            target: esp32s3
             flash_size: 16MB
+            flash_freq: 80m
+            bootloader_offset: "0x0"
+            app_offset: "0x20000"
+          - board: dfrobot_firebeetle_esp32e
+            target: esp32
+            flash_size: 4MB
+            flash_freq: 40m
+            bootloader_offset: "0x1000"
+            app_offset: "0x10000"
       fail-fast: false
 
     steps:
@@ -72,7 +97,7 @@ jobs:
       uses: espressif/esp-idf-ci-action@v1
       with:
         esp_idf_version: release-v6.0
-        target: esp32s3
+        target: ${{ matrix.target }}
         command: |
           python3 build.py --board ${{ matrix.board }} --step firmware \
             -DFIRMWARE_VERSION='${{ steps.version.outputs.version }}'
@@ -84,12 +109,13 @@ jobs:
       run: |
         mkdir -p firmware
 
-        # Create merged firmware directly from build directory
-        esptool.py --chip esp32s3 merge-bin -o firmware/photoframe-firmware-${{ matrix.board }}-merged.bin \
-          --flash_mode dio --flash_freq 80m --flash_size ${{ matrix.flash_size }} \
-          0x0 build/bootloader/bootloader.bin \
+        # Create merged firmware directly from build directory (chip-aware:
+        # classic-ESP32 FireBeetle uses different offsets/freq than the S3 boards).
+        esptool.py --chip ${{ matrix.target }} merge-bin -o firmware/photoframe-firmware-${{ matrix.board }}-merged.bin \
+          --flash_mode dio --flash_freq ${{ matrix.flash_freq }} --flash_size ${{ matrix.flash_size }} \
+          ${{ matrix.bootloader_offset }} build/bootloader/bootloader.bin \
           0x8000 build/partition_table/partition-table.bin \
-          0x20000 build/esp32-photoframe.bin
+          ${{ matrix.app_offset }} build/esp32-photoframe.bin
 
         # Copy OTA binary with board name for release
         cp build/esp32-photoframe.bin firmware/esp32-photoframe-${{ matrix.board }}.bin
@@ -128,6 +154,8 @@ jobs:
           firmware-artifacts/esp32-photoframe-seeedstudio_reterminal_e1002.bin
           firmware-artifacts/photoframe-firmware-seeedstudio_xiao_ee04-merged.bin
           firmware-artifacts/esp32-photoframe-seeedstudio_xiao_ee04.bin
+          firmware-artifacts/photoframe-firmware-dfrobot_firebeetle_esp32e-merged.bin
+          firmware-artifacts/esp32-photoframe-dfrobot_firebeetle_esp32e.bin
         body: |
           ## What's New
 
@@ -145,9 +173,13 @@ jobs:
           - `photoframe-firmware-seeedstudio_xiao_ee02-merged.bin`: For Seeed XIAO EE02
           - `photoframe-firmware-seeedstudio_reterminal_e1002-merged.bin`: For Seeed reTerminal E1002
           - `photoframe-firmware-seeedstudio_xiao_ee04-merged.bin`: For Seeed XIAO EE04
+          - `photoframe-firmware-dfrobot_firebeetle_esp32e-merged.bin`: For DFRobot FireBeetle 2 ESP32-E + Waveshare 4" HAT+ E
 
           ```bash
+          # ESP32-S3 boards (Waveshare/Seeed): flash the merged bin at 0x0
           esptool.py --chip esp32s3 --port /dev/ttyUSB0 --baud 921600 write_flash 0x0 photoframe-firmware-[board]-merged.bin
+          # DFRobot FireBeetle (classic ESP32): also flashed at 0x0 (the merged bin is padded from 0x0)
+          esptool.py --chip esp32 --port /dev/ttyUSB0 --baud 921600 write_flash 0x0 photoframe-firmware-dfrobot_firebeetle_esp32e-merged.bin
           ```
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -224,7 +256,7 @@ jobs:
         fi
         echo "Stable version: ${STABLE_TAG:-none}"
 
-        BOARDS="waveshare_photopainter_73 seeedstudio_xiao_ee02 seeedstudio_reterminal_e1002 seeedstudio_xiao_ee04"
+        BOARDS="waveshare_photopainter_73 seeedstudio_xiao_ee02 seeedstudio_reterminal_e1002 seeedstudio_xiao_ee04 dfrobot_firebeetle_esp32e"
 
         for board in $BOARDS; do
           mkdir -p "demo/$board"
@@ -256,29 +288,6 @@ jobs:
           python3 scripts/generate_manifests.py --no-copy --dev --demo-dir "demo/$board" --board "$board" \
             ${STABLE_TAG:+--stable-version "$STABLE_TAG"}
         done
-
-        # ── FireBeetle (classic ESP32) web-flash assets ──────────────────────
-        # The FireBeetle is NOT in the build matrix (classic esp32 / IDF v5.3.3,
-        # app at 0x10000), so it has no CI artifact. Its web-flash firmware comes
-        # from the latest published `firebeetle-v*` release instead (cut manually
-        # with the classic-esp32 merge recipe). If none exists yet the flasher
-        # entry is simply skipped rather than 404-ing.
-        FB_BOARD="dfrobot_firebeetle_esp32e"
-        FB_TAG=$(gh release list --limit 30 --json tagName,isDraft,isPrerelease \
-          --jq '[.[] | select(.isDraft==false and .isPrerelease==false and (.tagName|startswith("firebeetle-v")))][0].tagName' 2>/dev/null || echo "")
-        if [[ -n "$FB_TAG" ]]; then
-          mkdir -p "demo/$FB_BOARD"
-          if gh release download "$FB_TAG" --pattern "photoframe-firmware-$FB_BOARD-merged.bin" --dir "demo/$FB_BOARD" --clobber; then
-            echo "Downloaded FireBeetle web-flash firmware ${FB_TAG}"
-            # No separate dev build for the FireBeetle: dev mirrors stable.
-            cp "demo/$FB_BOARD/photoframe-firmware-$FB_BOARD-merged.bin" "demo/$FB_BOARD/photoframe-firmware-$FB_BOARD-dev.bin"
-            python3 scripts/generate_manifests.py --no-copy --dev --demo-dir "demo/$FB_BOARD" --board "$FB_BOARD" --stable-version "$FB_TAG"
-          else
-            echo "Warning: FireBeetle release ${FB_TAG} has no merged bin asset; skipping FireBeetle web flash"
-          fi
-        else
-          echo "No published firebeetle-v* release found; skipping FireBeetle web flash"
-        fi
 
         # Link a default manifest at the root of demo for backward compatibility or default view
         cp demo/waveshare_photopainter_73/manifest.json demo/

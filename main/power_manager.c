@@ -405,7 +405,10 @@ esp_err_t power_manager_init(void)
         pin_mask |= (1ULL << BOARD_HAL_WAKEUP_KEY);
     }
     if (BOARD_HAL_ROTATE_KEY != GPIO_NUM_NC) {
-        pin_mask |= (1ULL << BOARD_HAL_ROTATE_KEY);
+        // Clamp the compile-time constant shift so boards where ROTATE_KEY is NC
+        // (-1, e.g. FireBeetle) don't trip -Werror=shift-count-negative on IDF
+        // v6.0; the runtime guard above still gates the actual bit.
+        pin_mask |= (1ULL << (BOARD_HAL_ROTATE_KEY < 0 ? 0 : BOARD_HAL_ROTATE_KEY));
     }
     if (BOARD_HAL_CLEAR_KEY != GPIO_NUM_NC) {
         pin_mask |= (1ULL << (BOARD_HAL_CLEAR_KEY < 0 ? 0 : BOARD_HAL_CLEAR_KEY));
@@ -492,7 +495,9 @@ void power_manager_enter_sleep(void)
         wakeup_mask |= (1ULL << BOARD_HAL_WAKEUP_KEY);
     }
     if (BOARD_HAL_ROTATE_KEY != GPIO_NUM_NC) {
-        wakeup_mask |= (1ULL << BOARD_HAL_ROTATE_KEY);
+        // Clamp negative NC pin (see above) to stay clean under IDF v6.0's
+        // -Werror=shift-count-negative; runtime guard still gates the bit.
+        wakeup_mask |= (1ULL << (BOARD_HAL_ROTATE_KEY < 0 ? 0 : BOARD_HAL_ROTATE_KEY));
     }
     if (BOARD_HAL_CLEAR_KEY != GPIO_NUM_NC) {
         wakeup_mask |= (1ULL << (BOARD_HAL_CLEAR_KEY < 0 ? 0 : BOARD_HAL_CLEAR_KEY));

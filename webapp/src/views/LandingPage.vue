@@ -195,19 +195,15 @@ watch(selectedBoard, () => loadVersionInfo());
 
 async function loadVersionInfo() {
   try {
-    // The fork carries two release lines — S3 boards (`v*`) and the classic-ESP32
-    // FireBeetle (`firebeetle-v*`). `/releases/latest` returns whichever was
-    // published most recently regardless of line, so fetch the list and pick the
-    // newest published release on the line that matches the selected board.
+    // All boards (incl. the classic-ESP32 FireBeetle) now ship in the same `v*`
+    // release — CI builds every board. `/releases/latest` can return a non-`v`
+    // tag, so fetch the list and pick the newest published `v*` release.
     const stableResponse = await fetch(
       "https://api.github.com/repos/Snille/esp32-photoframe/releases?per_page=30"
     );
     const releases = await stableResponse.json();
-    // FireBeetle (chip esp32) tracks firebeetle-v*; everything else tracks v*.
-    const isFirebeetle = selectedBoardMeta.value?.chip === "esp32";
-    const lineRe = isFirebeetle ? /^firebeetle-v\d/ : /^v\d/;
     const stable = Array.isArray(releases)
-      ? releases.find((r) => !r.draft && !r.prerelease && lineRe.test(r.tag_name))
+      ? releases.find((r) => !r.draft && !r.prerelease && /^v\d/.test(r.tag_name))
       : null;
     stableVersion.value = stable ? stable.tag_name : "unknown";
 
