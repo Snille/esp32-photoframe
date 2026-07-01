@@ -28,8 +28,8 @@
 
 #include "ha_integration.h"
 #include "http_server.h"
-#include "improv_serial.h"
 #include "image_processor.h"
+#include "improv_serial.h"
 #include "mdns_service.h"
 #include "memfs.h"
 #include "nvs_flash.h"

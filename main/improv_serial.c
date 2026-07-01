@@ -86,8 +86,7 @@ static esp_err_t improv_io_init(void)
     // TX, but the Improv client resynchronizes on the "IMPROV" header, and log
     // traffic during provisioning is sparse, so this is harmless in practice.
 #if IMPROV_TRANSPORT_UART
-    esp_err_t err =
-        uart_driver_install(CONFIG_ESP_CONSOLE_UART_NUM, 1024, 256, 0, NULL, 0);
+    esp_err_t err = uart_driver_install(CONFIG_ESP_CONSOLE_UART_NUM, 1024, 256, 0, NULL, 0);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "uart_driver_install failed: %s", esp_err_to_name(err));
         return err;
@@ -232,10 +231,10 @@ static void improv_handle_device_info(void)
 {
     const esp_app_desc_t *desc = esp_app_get_description();
     const char *info[4] = {
-        "PhotoFrame",                    // firmware name
-        desc ? desc->version : "?",      // firmware version (git-tag stamp)
-        improv_chip_family(),            // chip family
-        config_manager_get_device_name() // device name
+        "PhotoFrame",                     // firmware name
+        desc ? desc->version : "?",       // firmware version (git-tag stamp)
+        improv_chip_family(),             // chip family
+        config_manager_get_device_name()  // device name
     };
     improv_send_rpc_response(IMPROV_CMD_REQUEST_DEVICE_INFO, info, 4);
 }
@@ -252,8 +251,7 @@ static void improv_handle_scan(void)
         char rssi[8];
         snprintf(rssi, sizeof(rssi), "%d", aps[i].rssi);
         const char *row[3] = {
-            (const char *) aps[i].ssid,
-            rssi,
+            (const char *) aps[i].ssid, rssi,
             (aps[i].authmode == WIFI_AUTH_OPEN) ? "NO" : "YES",  // auth required
         };
         improv_send_rpc_response(IMPROV_CMD_REQUEST_SCAN, row, 3);
@@ -372,8 +370,8 @@ static void improv_task(void *arg)
     improv_send_state();
 
     uint8_t buf[IMPROV_HEADER_LEN + 3 + IMPROV_MAX_PAYLOAD + 1];
-    size_t pos = 0;       // bytes accumulated in buf
-    uint8_t data_len = 0; // payload length once the length byte is seen
+    size_t pos = 0;        // bytes accumulated in buf
+    uint8_t data_len = 0;  // payload length once the length byte is seen
 
     while (1) {
         uint8_t b;

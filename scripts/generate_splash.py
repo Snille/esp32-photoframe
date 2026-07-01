@@ -45,8 +45,8 @@ PROCESS_CLI = os.path.join(os.path.dirname(__file__), "..", "process-cli", "cli.
 CAT_IMAGE = os.path.join(os.path.dirname(__file__), "splash_assets", "cat.jpg")
 
 # Forest (Dark) palette mapped to e-paper-friendly colours
-BG = (0, 0, 0)            # pure black -> exact palette colour, no dither speckle
-GREEN = (63, 174, 104)    # #3fae68 forest accent (maps to native green)
+BG = (0, 0, 0)  # pure black -> exact palette colour, no dither speckle
+GREEN = (63, 174, 104)  # #3fae68 forest accent (maps to native green)
 WHITE = (242, 242, 242)
 MUTED = (150, 150, 150)
 
@@ -54,9 +54,9 @@ MUTED = (150, 150, 150)
 # which lists the *viewing* resolution for some boards and the *native* one for
 # others). The splash is embedded raw and must match this exactly.
 NATIVE_DIMS = {
-    "dfrobot_firebeetle_esp32e": (400, 600),      # driver_ws4in_e6
-    "seeedstudio_xiao_ee02": (1200, 1600),         # driver_ed2208_nca
-    "seeedstudio_xiao_ee04": (800, 480),           # driver_ed2208_gca
+    "dfrobot_firebeetle_esp32e": (400, 600),  # driver_ws4in_e6
+    "seeedstudio_xiao_ee02": (1200, 1600),  # driver_ed2208_nca
+    "seeedstudio_xiao_ee04": (800, 480),  # driver_ed2208_gca
     "seeedstudio_reterminal_e1002": (800, 480),
     "waveshare_photopainter_73": (800, 480),
 }
@@ -154,7 +154,9 @@ def compose(view_w, view_h, kind):
         img.paste(cat, (cx, cy), mask)
         d.rounded_rectangle(
             [cx - 3, cy - 3, cx + cs + 3, cy + cs + 3],
-            radius=rad + 3, outline=GREEN, width=3,
+            radius=rad + 3,
+            outline=GREEN,
+            width=3,
         )
 
         rx = cx + cs + int(view_w * 0.05)
@@ -164,12 +166,23 @@ def compose(view_w, view_h, kind):
         ty = int(view_h * 0.10)
         _ctext(d, title, rcx, ty, _fit_font(d, title, rcw, view_h * 0.115), WHITE)
         d.rounded_rectangle(
-            [rcx - int(view_w * 0.06), ty + int(view_h * 0.135),
-             rcx + int(view_w * 0.06), ty + int(view_h * 0.155)],
-            radius=3, fill=GREEN,
+            [
+                rcx - int(view_w * 0.06),
+                ty + int(view_h * 0.135),
+                rcx + int(view_w * 0.06),
+                ty + int(view_h * 0.155),
+            ],
+            radius=3,
+            fill=GREEN,
         )
-        _ctext(d, subtitle, rcx, int(view_h * 0.30),
-               _fit_font(d, subtitle, rcw, view_h * 0.05, bold=False), MUTED)
+        _ctext(
+            d,
+            subtitle,
+            rcx,
+            int(view_h * 0.30),
+            _fit_font(d, subtitle, rcw, view_h * 0.05, bold=False),
+            MUTED,
+        )
 
         qs = int(min(rcw, view_h) * 0.46)
         qx = rcx - qs // 2
@@ -184,19 +197,39 @@ def compose(view_w, view_h, kind):
         img.paste(cat, (cx, cy), mask)
         d.rounded_rectangle(
             [cx - 3, cy - 3, cx + cs + 3, cy + cs + 3],
-            radius=rad + 3, outline=GREEN, width=3,
+            radius=rad + 3,
+            outline=GREEN,
+            width=3,
         )
 
         cxc = view_w // 2
         ty = cy + cs + int(view_h * 0.04)
-        _ctext(d, title, cxc, ty, _fit_font(d, title, int(view_w * 0.9), view_w * 0.12), WHITE)
-        d.rounded_rectangle(
-            [cxc - int(view_w * 0.08), ty + int(view_w * 0.145),
-             cxc + int(view_w * 0.08), ty + int(view_w * 0.165)],
-            radius=3, fill=GREEN,
+        _ctext(
+            d,
+            title,
+            cxc,
+            ty,
+            _fit_font(d, title, int(view_w * 0.9), view_w * 0.12),
+            WHITE,
         )
-        _ctext(d, subtitle, cxc, ty + int(view_w * 0.20),
-               _fit_font(d, subtitle, int(view_w * 0.9), view_w * 0.055, bold=False), MUTED)
+        d.rounded_rectangle(
+            [
+                cxc - int(view_w * 0.08),
+                ty + int(view_w * 0.145),
+                cxc + int(view_w * 0.08),
+                ty + int(view_w * 0.165),
+            ],
+            radius=3,
+            fill=GREEN,
+        )
+        _ctext(
+            d,
+            subtitle,
+            cxc,
+            ty + int(view_w * 0.20),
+            _fit_font(d, subtitle, int(view_w * 0.9), view_w * 0.055, bold=False),
+            MUTED,
+        )
 
         qs = int(view_w * 0.42)
         qx = cxc - qs // 2
@@ -235,8 +268,17 @@ def _get_process_cli_base(width, height):
             f"process-cli not found at {PROCESS_CLI}\n  Run: cd process-cli && npm ci"
         )
     orientation = "portrait" if height > width else "landscape"
-    return [node, PROCESS_CLI, "--placeholder--", "-d", f"{width}x{height}",
-            "--orientation", orientation, "--scale-mode", "cover"]
+    return [
+        node,
+        PROCESS_CLI,
+        "--placeholder--",
+        "-d",
+        f"{width}x{height}",
+        "--orientation",
+        orientation,
+        "--scale-mode",
+        "cover",
+    ]
 
 
 def png_to_epdgz(png_path, output_dir, width, height):
@@ -281,12 +323,20 @@ def main():
 
     parser = argparse.ArgumentParser(description="Generate OOBE splash screen EPDGZ")
     g = parser.add_mutually_exclusive_group(required=True)
-    g.add_argument("--board", choices=BOARD_DIMENSIONS.keys(),
-                   help="Board name (display resolution from boards.py)")
-    g.add_argument("--size", choices=SCREEN_SIZES.keys(),
-                   help="Display resolution directly (e.g. 800x480)")
-    parser.add_argument("--output-dir",
-                        default=os.path.join(os.path.dirname(__file__), "..", "main", "splash_data"))
+    g.add_argument(
+        "--board",
+        choices=BOARD_DIMENSIONS.keys(),
+        help="Board name (display resolution from boards.py)",
+    )
+    g.add_argument(
+        "--size",
+        choices=SCREEN_SIZES.keys(),
+        help="Display resolution directly (e.g. 800x480)",
+    )
+    parser.add_argument(
+        "--output-dir",
+        default=os.path.join(os.path.dirname(__file__), "..", "main", "splash_data"),
+    )
     args = parser.parse_args()
 
     if args.board:
@@ -306,7 +356,9 @@ def main():
 
     all_meta = {}
     for name in ("splash", "setup_complete"):
-        print(f"\n=== {name} (view {view_w}x{view_h} -> native {native_w}x{native_h}, rot {rot}) ===")
+        print(
+            f"\n=== {name} (view {view_w}x{view_h} -> native {native_w}x{native_h}, rot {rot}) ==="
+        )
         view_img, rect = compose(view_w, view_h, name)
         native_img, nrect = to_native(view_img, rect, view_w, view_h, rot)
         all_meta[name] = nrect
