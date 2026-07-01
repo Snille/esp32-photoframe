@@ -14,7 +14,7 @@ export const themeOptions = [
 ];
 
 export const THEME_STORAGE_KEY = "pf_theme";
-export const DEFAULT_THEME = "terracotta";
+export const DEFAULT_THEME = "forestDark";
 
 const lightTheme = (primary) => ({
   dark: false,
