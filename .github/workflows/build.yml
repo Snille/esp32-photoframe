@@ -230,7 +230,11 @@ jobs:
         cp .img/taipei101.jpg demo/
         cp .img/stock_algorithm.bmp demo/
         cp .img/our_algorithm.png demo/
-        cp .img/feature_graphic.png demo/
+        # Companion-app showcase assets (CSS-composed band; themed at runtime)
+        cp .img/app-kakan-icon.png demo/
+        cp .img/app-phone-1.png demo/
+        cp .img/app-phone-2.png demo/
+        cp .img/app-phone-3.png demo/
         cp webapp/public/icon.svg demo/
 
         # Generate the dithered hero preview from taipei101.jpg

@@ -68,8 +68,8 @@ const ecosystem = [
   },
   {
     title: "Companion App",
-    blurb: "iOS and Android app for discovery, upload, AI generation, and settings.",
-    href: "https://github.com/aitjcize/esp32-photoframe-app",
+    blurb: "Android app for discovery, upload, AI generation, and settings.",
+    href: "https://github.com/Snille/esp32-photoframe-app",
     tag: "Flutter",
   },
 ];
@@ -622,10 +622,10 @@ function scrollTo(id) {
             <h4>How it goes</h4>
             <ol class="flash-steps">
               <li>Connect the board over USB-C.</li>
-              <li>Click <em>Install firmware</em> and select the serial port.</li>
-              <li>Wait for the flash to complete (about a minute).</li>
-              <li>The device restarts and starts a <code>PhotoFrame-XXXX</code> WiFi AP.</li>
-              <li>Connect, configure WiFi, you're on.</li>
+              <li>Click <em>Install firmware</em> and pick the serial port.</li>
+              <li>Wait for the flash to finish (about a minute).</li>
+              <li>Enter your WiFi right in the flasher when prompted — no AP hop.</li>
+              <li>The frame connects and you're on.</li>
             </ol>
             <div class="flash-board-meta">
               <span class="flash-board-name">{{ selectedBoardMeta.label }}</span>
@@ -640,11 +640,24 @@ function scrollTo(id) {
       <!-- ────────────────────────────────────────  COMPANION  ──────────────────────────────────── -->
       <section id="companion-app" class="section section-app">
         <div class="app-canvas">
-          <img
-            class="app-graphic"
-            :src="`${baseUrl}feature_graphic.png`"
-            alt="ESP Frame companion app"
-          />
+          <div class="app-showcase">
+            <div class="app-brand">
+              <img
+                class="app-brand-icon"
+                :src="`${baseUrl}app-kakan-icon.png`"
+                alt="ESP Frame app icon — Kakan the calico"
+              />
+              <div>
+                <div class="app-brand-name">ESP Frame</div>
+                <div class="app-brand-sub">Companion app for the esp32-photoframe project</div>
+              </div>
+            </div>
+            <div class="app-phones">
+              <img :src="`${baseUrl}app-phone-1.png`" alt="Image processing screen" />
+              <img :src="`${baseUrl}app-phone-2.png`" alt="AI image generation screen" />
+              <img :src="`${baseUrl}app-phone-3.png`" alt="Settings screen" />
+            </div>
+          </div>
           <div class="app-text">
             <div class="section-head section-head-light">
               <span class="section-kicker">Companion app</span>
@@ -658,27 +671,15 @@ function scrollTo(id) {
             </p>
             <div class="app-stores">
               <a
-                href="https://apps.apple.com/tw/app/esp-frame/id6762510995?l=en-GB"
+                href="https://github.com/Snille/esp32-photoframe-app/releases"
                 target="_blank"
                 rel="noopener"
                 class="store"
               >
-                <v-icon icon="mdi-apple" size="28" />
+                <v-icon icon="mdi-android" size="28" />
                 <div>
-                  <span class="store-os">App Store</span>
-                  <span class="store-track">USD 2.99</span>
-                </div>
-              </a>
-              <a
-                href="https://github.com/aitjcize/esp32-photoframe/discussions/86"
-                target="_blank"
-                rel="noopener"
-                class="store"
-              >
-                <v-icon icon="mdi-google-play" size="28" />
-                <div>
-                  <span class="store-os">Google Play</span>
-                  <span class="store-track">Internal testing</span>
+                  <span class="store-os">Android APK</span>
+                  <span class="store-track">Sideload</span>
                 </div>
               </a>
             </div>
@@ -1661,8 +1662,12 @@ em.wonk {
 }
 
 .flash-aside {
-  background: var(--ink);
-  color: var(--paper-deep);
+  /* Always a dark "espresso" card, in every theme. Using var(--ink) here made
+     the box flip to a pale panel in dark themes while its inner accents stayed
+     tuned for a dark card (code + step text became invisible). --espresso is
+     dark in all six palettes, so light text + a bright --accent read correctly. */
+  background: var(--espresso);
+  color: var(--cream);
   border-radius: 6px;
   padding: clamp(1.5rem, 3vw, 2.4rem);
   display: flex;
@@ -1693,7 +1698,7 @@ em.wonk {
   line-height: 1.55;
   padding-left: 2rem;
   position: relative;
-  color: var(--paper-deep);
+  color: color-mix(in srgb, var(--cream) 85%, transparent);
 }
 .flash-steps li::before {
   content: counter(step, decimal-leading-zero);
@@ -1702,7 +1707,7 @@ em.wonk {
   top: 0;
   font-family: var(--serif);
   font-style: italic;
-  color: var(--accent-soft);
+  color: var(--accent);
   font-variation-settings:
     "opsz" 14,
     "WONK" 1;
@@ -1712,10 +1717,10 @@ em.wonk {
 .flash-steps li code {
   font-family: ui-monospace, "SF Mono", monospace;
   font-size: 0.85em;
-  background: var(--espresso);
+  background: rgba(0, 0, 0, 0.35);
   padding: 0.05em 0.4em;
   border-radius: 3px;
-  color: var(--accent-soft);
+  color: var(--accent);
 }
 .flash-steps li em {
   font-family: var(--serif);
@@ -1744,7 +1749,7 @@ em.wonk {
   font-size: 0.78rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--accent-soft);
+  color: var(--accent);
 }
 
 /* esp-web-install-button styling override */
@@ -1759,7 +1764,15 @@ em.wonk {
   max-width: none;
 }
 .app-canvas {
-  background: linear-gradient(135deg, #1f140a 0%, #3d2817 55%, #5a3a20 100%);
+  /* Theme-aware dark showcase band (was a hardcoded brown gradient). Espresso
+     tones keep it dark in every palette; the accent-tinted far corner picks up
+     the theme's hue (forest green, ocean blue, terracotta amber…). */
+  background: linear-gradient(
+    135deg,
+    var(--espresso) 0%,
+    var(--espresso-2) 55%,
+    color-mix(in srgb, var(--accent) 42%, var(--espresso-2)) 100%
+  );
   color: var(--cream);
   padding: clamp(3rem, 7vw, 6rem) clamp(1.5rem, 5vw, 4rem);
   position: relative;
@@ -1776,7 +1789,11 @@ em.wonk {
   content: "";
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at 20% 110%, rgba(232, 200, 154, 0.14), transparent 55%);
+  background: radial-gradient(
+    circle at 20% 110%,
+    color-mix(in srgb, var(--accent) 22%, transparent),
+    transparent 55%
+  );
   pointer-events: none;
 }
 @media (max-width: 880px) {
@@ -1785,32 +1802,82 @@ em.wonk {
     padding: 2.4rem 1.5rem;
   }
 }
-.app-graphic {
-  width: 100%;
-  height: auto;
-  border-radius: 4px;
-  box-shadow: 0 30px 60px -20px rgba(0, 0, 0, 0.5);
+/* Companion-app showcase, rebuilt from small images + CSS (was a baked brown
+   PNG). Everything here recolors with the theme: the band gradient, the icon
+   frame, and the text all read from theme tokens; only the phone screenshots
+   are fixed content. */
+.app-showcase {
   position: relative;
   z-index: 1;
+  display: grid;
+  gap: clamp(1.2rem, 2.5vw, 1.9rem);
+}
+.app-brand {
+  display: flex;
+  align-items: center;
+  gap: 1.1rem;
+}
+.app-brand-icon {
+  width: clamp(68px, 8vw, 88px);
+  height: clamp(68px, 8vw, 88px);
+  border-radius: 22%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1px solid color-mix(in srgb, var(--cream) 32%, transparent);
+  box-shadow: 0 12px 26px -12px rgba(0, 0, 0, 0.65);
+}
+.app-brand-name {
+  font-family: var(--serif);
+  font-size: clamp(1.8rem, 3.4vw, 2.4rem);
+  font-weight: 400;
+  line-height: 1;
+  color: var(--cream);
+  font-variation-settings:
+    "opsz" 60,
+    "SOFT" 30;
+}
+.app-brand-sub {
+  font-size: 0.9rem;
+  line-height: 1.4;
+  margin-top: 0.35rem;
+  max-width: 30ch;
+  color: color-mix(in srgb, var(--cream) 72%, transparent);
+}
+.app-phones {
+  display: flex;
+  gap: clamp(0.5rem, 1.4vw, 0.9rem);
+  align-items: flex-end;
+}
+.app-phones img {
+  flex: 1 1 0;
+  min-width: 0;
+  width: auto;
+  height: auto;
+  display: block;
+  filter: drop-shadow(0 16px 30px rgba(0, 0, 0, 0.55));
+}
+/* Stagger the middle phone up a touch for the original's rhythm */
+.app-phones img:nth-child(2) {
+  margin-bottom: clamp(0.4rem, 1.2vw, 0.9rem);
 }
 .app-text {
   position: relative;
   z-index: 1;
 }
 .section-head-light {
-  color: var(--accent-soft);
+  color: var(--accent);
 }
 .section-head-light .section-kicker {
-  color: var(--accent-soft);
+  color: var(--accent);
 }
 .section-head-light::before {
-  background: rgba(232, 200, 154, 0.4);
+  background: rgba(255, 255, 255, 0.3);
 }
 .section-title-light {
   color: var(--cream);
 }
 .section-title-light em.wonk {
-  color: var(--accent-soft);
+  color: var(--accent);
 }
 .section-lede-light {
   color: rgba(244, 234, 214, 0.78);
@@ -1838,7 +1905,7 @@ em.wonk {
 }
 .store:hover {
   background: rgba(244, 234, 214, 0.12);
-  border-color: var(--accent-soft);
+  border-color: var(--accent);
 }
 .store > div {
   display: grid;
@@ -1855,7 +1922,7 @@ em.wonk {
   font-size: 0.7rem;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--accent-soft);
+  color: var(--accent);
 }
 .app-features {
   display: flex;
