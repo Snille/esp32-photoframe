@@ -93,9 +93,18 @@ TEXTS = {
 
 def _font(px, bold=True):
     names = (
-        ("arialbd.ttf", "Arial Bold.ttf", "DejaVuSans-Bold.ttf")
+        (
+            "arialbd.ttf",
+            "Arial Bold.ttf",
+            "DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        )
         if bold
-        else ("arial.ttf", "DejaVuSans.ttf")
+        else (
+            "arial.ttf",
+            "DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        )
     )
     for n in names:
         try:

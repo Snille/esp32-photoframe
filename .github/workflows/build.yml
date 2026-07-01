@@ -59,8 +59,11 @@ jobs:
 
     - name: Install splash screen system dependencies
       run: |
-        pip install qrcode
-        sudo apt-get update && sudo apt-get install -y librsvg2-bin
+        # generate_splash.py composes the splash with Pillow (qrcode for the
+        # live-QR slot). Pillow replaced the old librsvg/SVG path; DejaVu gives
+        # it real fonts (Pillow's bare-name lookup can't find them otherwise).
+        pip install qrcode pillow
+        sudo apt-get update && sudo apt-get install -y fonts-dejavu-core
 
     - name: Generate splash screen
       run: python3 build.py --board ${{ matrix.board }} --step splash
