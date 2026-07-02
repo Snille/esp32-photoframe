@@ -532,9 +532,6 @@ void app_main(void)
             // and provision via the app before the device auto-sleeps.
             power_manager_set_auto_sleep_timeout(OOBE_AUTO_SLEEP_TIMEOUT_SEC);
 
-            // Show OOBE splash screen with WiFi QR code
-            splash_screen_display();
-
             if (storage_has_persistent_storage()) {
                 ESP_LOGI(TAG, "Option 1: Place wifi.txt on root of storage with:");
                 ESP_LOGI(TAG, "  Line 1: WiFi SSID");
@@ -558,6 +555,14 @@ void app_main(void)
             ESP_LOGI(TAG, "Option 3: Improv-Serial via the browser flasher (over USB)");
             ESP_LOGI(TAG, "===========================================");
             improv_serial_start();
+
+            // Render the OOBE splash + QR *after* bringing up the AP and Improv.
+            // The 6-color EPD full refresh takes ~15-30 s; doing it first delayed
+            // Improv past the browser flasher's (ESP Web Tools) detection window,
+            // so the "enter Wi-Fi" step never appeared. Improv is a background
+            // task, so it now answers the flasher immediately while the splash
+            // paints in parallel.
+            splash_screen_display();
 
             while (!wifi_provisioning_is_provisioned()) {
                 vTaskDelay(pdMS_TO_TICKS(1000));

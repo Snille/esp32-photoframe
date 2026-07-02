@@ -104,7 +104,7 @@ def build_firmware(board, extra_args):
     idf_target = _read_idf_target(board)
     idf_base = _idf_py() + [
         f"-DSDKCONFIG_DEFAULTS={sdkconfig_defaults}",
-        "-DFIRMWARE_VERSION=2.10.10",
+        "-DFIRMWARE_VERSION=2.10.11",
     ]
     if idf_target:
         idf_base.append(f"-DIDF_TARGET={idf_target}")

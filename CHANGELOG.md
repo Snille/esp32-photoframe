@@ -10,6 +10,16 @@ DFRobot FireBeetle) on **ESP-IDF v6.0** from a single `v<version>` tag; each
 release carries every board's flashable factory bin and drives the web flasher.
 (The old manual `firebeetle-v<version>` line is retired.)
 
+## 2.10.11
+
+### Fixed
+- **Wi-Fi setup in the browser flasher (Improv) now appears.** During
+  out-of-box setup the frame rendered the QR splash *before* starting Improv,
+  and the 6-color EPD refresh (~15-30 s) pushed Improv past ESP Web Tools'
+  detection window, so the "enter Wi-Fi" step never showed. The AP + Improv now
+  start first and the splash paints afterward (Improv is a background task), so
+  the flasher sees the frame immediately.
+
 ## 2.10.10
 
 ### Fixed
