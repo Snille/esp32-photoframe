@@ -98,7 +98,10 @@ static esp_err_t improv_io_init(void)
         .tx_buffer_size = 512,
     };
     esp_err_t err = usb_serial_jtag_driver_install(&cfg);
-    if (err != ESP_OK) {
+    // ESP_ERR_INVALID_STATE means the driver is already installed — app_main's
+    // console_make_nonblocking() installs it at boot on the S3 boards. That's
+    // fine; we share the same driver for RX/TX.
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
         ESP_LOGE(TAG, "usb_serial_jtag_driver_install failed: %s", esp_err_to_name(err));
         return err;
     }

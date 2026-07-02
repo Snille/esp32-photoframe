@@ -43,6 +43,17 @@
 #include "wifi_manager.h"
 #include "wifi_provisioning.h"
 
+// On the S3 boards the console is routed to the native USB-Serial-JTAG port
+// (CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG) so boot logs + Improv provisioning share
+// the single USB cable. See console_make_nonblocking() below for why we must
+// then make that console non-blocking.
+#if defined(CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG)
+#include <fcntl.h>
+
+#include "driver/usb_serial_jtag.h"
+#include "driver/usb_serial_jtag_vfs.h"
+#endif
+
 static const char *TAG = "main";
 
 // Periodic callback for SNTP sync
@@ -271,8 +282,50 @@ void deep_sleep_wake_main(wakeup_source_t wakeup_src)
     // Won't reach here after sleep
 }
 
+#if defined(CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG)
+// Make the USB-Serial-JTAG console non-blocking.
+//
+// The default (no-driver) USB-SJ console TX *blocks* whenever a host has the
+// port open but isn't draining it — the exact situation when a frame is
+// USB-powered from a PC with no terminal attached. Every ESP_LOG then stalls
+// waiting for FIFO space that never frees, freezing the render loop mid-refresh
+// so the frame fetches the next image (server cursor advances) but never
+// displays it. (FireBeetle uses a UART0 console and is unaffected — which is
+// why only the S3 boards regressed.)
+//
+// Install the driver, route the console through it, and mark stdout/stderr
+// O_NONBLOCK so log writes DROP instead of blocking when nobody is reading. A
+// real terminal still drains the buffer and sees the logs.
+static void console_make_nonblocking(void)
+{
+    usb_serial_jtag_driver_config_t cfg = {
+        .rx_buffer_size = 512,
+        .tx_buffer_size = 1024,
+    };
+    esp_err_t err = usb_serial_jtag_driver_install(&cfg);
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
+        return;  // couldn't install and it's not already installed — leave as-is
+    }
+    usb_serial_jtag_vfs_use_driver();
+    int fl = fcntl(STDOUT_FILENO, F_GETFL, 0);
+    if (fl >= 0) {
+        fcntl(STDOUT_FILENO, F_SETFL, fl | O_NONBLOCK);
+    }
+    fl = fcntl(STDERR_FILENO, F_GETFL, 0);
+    if (fl >= 0) {
+        fcntl(STDERR_FILENO, F_SETFL, fl | O_NONBLOCK);
+    }
+}
+#endif
+
 void app_main(void)
 {
+#if defined(CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG)
+    // Do this first, before any heavy logging, so a non-draining USB host can
+    // never stall the app (see the function comment).
+    console_make_nonblocking();
+#endif
+
     // Check reset reason to detect crashes
     esp_reset_reason_t reset_reason = esp_reset_reason();
     const char *reset_reason_str;
