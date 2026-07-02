@@ -10,6 +10,16 @@ DFRobot FireBeetle) on **ESP-IDF v6.0** from a single `v<version>` tag; each
 release carries every board's flashable factory bin and drives the web flasher.
 (The old manual `firebeetle-v<version>` line is retired.)
 
+## 2.10.13
+
+### Added
+- **The frame reports its last reset cause** (`X-Reset-Reason` header on every
+  pull): poweron / deepsleep / sw / task_wdt / int_wdt / wdt / panic / brownout.
+  A hung frame can't report while it's hung, but the reset cause persists across
+  the reboot, so the next successful check-in tells the server why it last
+  reset. The server flags a crash cause (watchdog/panic/brownout) in the Devices
+  list, so a crash loop becomes visible after the frame recovers.
+
 ## 2.10.12
 
 ### Fixed
