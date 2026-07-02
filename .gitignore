@@ -24,7 +24,10 @@ demo/taipei101.jpg
 demo/taipei101_dithered.png
 demo/stock_algorithm.bmp
 demo/our_algorithm.png
-demo/feature_graphic.png
+demo/app-kakan-icon.png
+demo/app-phone-1.png
+demo/app-phone-2.png
+demo/app-phone-3.png
 demo/icon.svg
 demo/manifest.json
 demo/manifest-dev.json
@@ -34,6 +37,7 @@ demo/waveshare_photopainter_73
 demo/seeedstudio_xiao_ee02
 demo/seeedstudio_xiao_ee04
 demo/seeedstudio_reterminal_e1002
+demo/dfrobot_firebeetle_esp32e
 
 # Local release artifacts (uploaded to GitHub Releases, not committed)
 release-firebeetle/
