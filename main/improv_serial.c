@@ -19,11 +19,12 @@
 // ESP Web Tools talks to whichever serial port it used to flash the board:
 //   - classic ESP32 (FireBeetle): a CH340 USB-UART bridge on UART0
 //   - ESP32-S3 boards: the chip's native USB-Serial-JTAG controller
-// We bind Improv to the same channel the console uses, route the console
-// through that peripheral's IDF driver (so log TX and our binary packet TX
-// don't fight over the FIFO), and read/write raw bytes via the driver.
+// Selected by CHIP TARGET, deliberately NOT by the console config: the S3
+// console stays on UART0 (routing it to USB-SJ froze the frame — see the board
+// sdkconfig notes), so we install the USB-SJ driver ourselves just for Improv
+// RX + packet TX and leave ESP_LOG on its own console path.
 // ---------------------------------------------------------------------------
-#if defined(CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG)
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
 #define IMPROV_TRANSPORT_USJ 1
 #include "driver/usb_serial_jtag.h"
 #include "driver/usb_serial_jtag_vfs.h"

@@ -10,28 +10,36 @@ DFRobot FireBeetle) on **ESP-IDF v6.0** from a single `v<version>` tag; each
 release carries every board's flashable factory bin and drives the web flasher.
 (The old manual `firebeetle-v<version>` line is retired.)
 
-## 2.10.11
+## 2.10.12
 
 ### Fixed
-- **Wi-Fi setup in the browser flasher (Improv) now appears.** During
-  out-of-box setup the frame rendered the QR splash *before* starting Improv,
-  and the 6-color EPD refresh (~15-30 s) pushed Improv past ESP Web Tools'
-  detection window, so the "enter Wi-Fi" step never showed. The AP + Improv now
-  start first and the splash paints afterward (Improv is a background task), so
-  the flasher sees the frame immediately.
+- **S3 frames froze in a rotate-then-reboot loop — properly fixed now.** The
+  console had been routed to USB-Serial-JTAG (for boot logs + Improv over one
+  cable). But USB-SJ console TX *blocks* when a USB host holds the port open
+  without draining it — exactly a frame USB-powered from a PC. A rotation's log
+  burst filled the buffer, the render task stalled, and the task watchdog reset
+  the board: the frame rotated once, then its USB port vanished as it rebooted,
+  over and over. v2.10.10's non-blocking-console attempt only delayed it (the
+  IDF USB-SJ VFS doesn't honor `O_NONBLOCK` on write). **The console now stays
+  on the default UART0** on all S3 boards (EE02 / EE04 / reTerminal /
+  PhotoPainter-S3) — nothing in the log path can stall the app. Improv-Serial
+  still provisions over USB-SJ (now selected by chip target, not the console
+  config). Trade-off: no boot logs over USB on the S3 boards. FireBeetle was
+  never affected (UART0 console).
+- **Wi-Fi setup in the browser flasher (Improv) now appears.** During out-of-box
+  setup the frame rendered the QR splash *before* starting Improv, and the
+  6-color EPD refresh (~15-30 s) pushed Improv past ESP Web Tools' detection
+  window, so the "enter Wi-Fi" step never showed. The AP + Improv now start first
+  and the splash paints afterward (Improv is a background task), so the flasher
+  sees the frame immediately.
 
 ## 2.10.10
 
 ### Fixed
-- **S3 frames no longer freeze when USB-powered from a computer.** After the
-  Improv work routed the console to USB-Serial-JTAG, the default console TX
-  *blocked* whenever a host held the port open without draining it (a frame
-  plugged into a PC with no terminal attached). Every log write stalled, freezing
-  the render loop mid-refresh: the frame fetched the next image but never
-  displayed it, and forced rotation did nothing. The console is now non-blocking
-  (log writes drop when nobody is reading); a terminal still sees the logs, and
-  Improv-over-USB is preserved. Affected EE02 / EE04 / reTerminal / PhotoPainter-S3;
-  FireBeetle (UART0 console) was never affected.
+- **First attempt at the S3 freeze (superseded by 2.10.12).** Made the
+  USB-Serial-JTAG console non-blocking (install driver + `O_NONBLOCK`). It
+  reduced but did not eliminate the freeze, because the IDF USB-SJ VFS ignores
+  `O_NONBLOCK` on write — see 2.10.12, which moves the console off USB-SJ.
 
 ## 2.10.7
 

@@ -8,7 +8,9 @@ CONFIG_ESPTOOLPY_FLASHSIZE="16MB"
 # Internal flash storage (LittleFS)
 CONFIG_USE_INTERNAL_FLASH_STORAGE=y
 
-# Route the console to the native USB-Serial-JTAG port (the same port used for
-# flashing). This makes boot logs visible over the single USB cable and lets the
-# browser flasher (ESP Web Tools) hand over Wi-Fi credentials via Improv-Serial.
-CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+# Console stays on the default UART0 (NOT USB-Serial-JTAG). Routing the console
+# to USB-SJ froze the frame: the console TX blocks when a USB host holds the port
+# open without draining it (frame USB-powered from a PC), stalling the render loop
+# until the task watchdog resets the board — a rotate-then-reboot loop. Improv
+# still provisions over USB-SJ, gated on the chip target in improv_serial.c,
+# independent of the console.
