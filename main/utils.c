@@ -20,6 +20,7 @@
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "esp_mac.h"
+#include "esp_system.h"
 #include "image_processor.h"
 #include "mdns_service.h"
 #include "periodic_tasks.h"
@@ -626,6 +627,43 @@ esp_err_t fetch_and_save_image_from_url(const char *url, char *saved_image_path,
             break;
         }
         esp_http_client_set_header(client, "X-Wake-Reason", wake_reason);
+
+        // Report the last reset cause. A frame that's crash-looping (task/interrupt
+        // watchdog, panic, brownout) can't report while it's actually hung, but
+        // esp_reset_reason() persists across the reboot — so the NEXT successful
+        // check-in tells the server "I last reset because of X". The server
+        // surfaces this so a crash loop is visible after the fact.
+        const char *reset_reason;
+        switch (esp_reset_reason()) {
+        case ESP_RST_POWERON:
+            reset_reason = "poweron";
+            break;
+        case ESP_RST_SW:
+            reset_reason = "sw";
+            break;
+        case ESP_RST_DEEPSLEEP:
+            reset_reason = "deepsleep";
+            break;
+        case ESP_RST_PANIC:
+            reset_reason = "panic";
+            break;
+        case ESP_RST_INT_WDT:
+            reset_reason = "int_wdt";
+            break;
+        case ESP_RST_TASK_WDT:
+            reset_reason = "task_wdt";
+            break;
+        case ESP_RST_WDT:
+            reset_reason = "wdt";
+            break;
+        case ESP_RST_BROWNOUT:
+            reset_reason = "brownout";
+            break;
+        default:
+            reset_reason = "unknown";
+            break;
+        }
+        esp_http_client_set_header(client, "X-Reset-Reason", reset_reason);
 
         // Report exactly when the frame intends to wake next, so the server (and
         // Home Assistant "Next Image Pull" sensor) shows the real time instead of
