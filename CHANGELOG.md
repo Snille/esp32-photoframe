@@ -5,11 +5,23 @@ support for the **DFRobot FireBeetle 2 ESP32-E** driving a **Waveshare 4" e-Pape
 HAT+ E (Spectra 6, 400×600)** — layered on top of upstream
 [aitjcize/esp32-photoframe](https://github.com/aitjcize/esp32-photoframe).
 
-Versions below are the FireBeetle `FIRMWARE_VERSION`. Flashable factory bins are
-published as GitHub Releases tagged `firebeetle-v<version>` (the board-prefixed
-tag keeps them out of the upstream `v*` CI that only builds the ESP32-S3 boards;
-the FireBeetle bin is built manually — classic ESP32, ESP-IDF v5.3.3, app at
-`0x10000`, 4 MB / dio / 40 MHz).
+CI now builds **all five boards** (the four ESP32-S3 frames plus the classic-ESP32
+DFRobot FireBeetle) on **ESP-IDF v6.0** from a single `v<version>` tag; each
+release carries every board's flashable factory bin and drives the web flasher.
+(The old manual `firebeetle-v<version>` line is retired.)
+
+## 2.10.10
+
+### Fixed
+- **S3 frames no longer freeze when USB-powered from a computer.** After the
+  Improv work routed the console to USB-Serial-JTAG, the default console TX
+  *blocked* whenever a host held the port open without draining it (a frame
+  plugged into a PC with no terminal attached). Every log write stalled, freezing
+  the render loop mid-refresh: the frame fetched the next image but never
+  displayed it, and forced rotation did nothing. The console is now non-blocking
+  (log writes drop when nobody is reading); a terminal still sees the logs, and
+  Improv-over-USB is preserved. Affected EE02 / EE04 / reTerminal / PhotoPainter-S3;
+  FireBeetle (UART0 console) was never affected.
 
 ## 2.10.7
 
