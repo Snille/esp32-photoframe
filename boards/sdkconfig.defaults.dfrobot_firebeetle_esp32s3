@@ -1,0 +1,17 @@
+# DFRobot FireBeetle 2 ESP32-S3 Specifics
+CONFIG_BOARD_DRIVER_DFROBOT_FIREBEETLE_ESP32S3=y
+
+# Internal flash storage (LittleFS) — 16MB flash has plenty of room
+CONFIG_USE_INTERNAL_FLASH_STORAGE=y
+
+# Console stays on the default UART0 (NOT USB-Serial-JTAG). Routing the console
+# to USB-SJ froze the frame on the XIAO EE04 (same native-USB situation as this
+# board): the console TX blocks when a USB host holds the port open without
+# draining it, stalling the render loop until the task watchdog resets the
+# board. Improv still provisions over USB-SJ, gated on the chip target in
+# improv_serial.c, independent of the console.
+#
+# Confirmed 2026-07-03: this board's USB-CDC (COM14) never carries console
+# output regardless of this setting (tooling/peripheral limitation, not a
+# firmware bug) — use a real UART-to-USB adapter on D43/TXD0 (GPIO43) +
+# D44/RXD0 (GPIO44) + GND for console access during bring-up/debugging.

@@ -200,8 +200,11 @@ static void gpio_init(void)
 
 static void spi_add_device(void)
 {
+    // 4 MHz default — safer for jumper wires; boards can override via
+    // epaper_config_t.spi_clock_hz if that's still too fast for their wiring.
+    int clock_hz = (g_cfg.spi_clock_hz > 0) ? g_cfg.spi_clock_hz : 4 * 1000 * 1000;
     spi_device_interface_config_t devcfg = {
-        .clock_speed_hz = 4 * 1000 * 1000,  // 4 MHz — safer for jumper wires
+        .clock_speed_hz = clock_hz,
         .mode = 0,
         .spics_io_num = -1,  // CS is manually controlled
         .queue_size = 1,

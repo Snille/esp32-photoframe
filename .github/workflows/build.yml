@@ -20,7 +20,7 @@ jobs:
       contents: write
     strategy:
       matrix:
-        board: [waveshare_photopainter_73, seeedstudio_xiao_ee02, seeedstudio_reterminal_e1002, seeedstudio_xiao_ee04, dfrobot_firebeetle_esp32e]
+        board: [waveshare_photopainter_73, seeedstudio_xiao_ee02, seeedstudio_reterminal_e1002, seeedstudio_xiao_ee04, dfrobot_firebeetle_esp32e, dfrobot_firebeetle_esp32s3]
         include:
           # target/flash params per board — the classic-ESP32 FireBeetle differs
           # (esp32, bootloader at 0x1000, app at 0x10000, 4MB/40m) from the S3
@@ -55,6 +55,12 @@ jobs:
             flash_freq: 40m
             bootloader_offset: "0x1000"
             app_offset: "0x10000"
+          - board: dfrobot_firebeetle_esp32s3
+            target: esp32s3
+            flash_size: 16MB
+            flash_freq: 80m
+            bootloader_offset: "0x0"
+            app_offset: "0x20000"
       fail-fast: false
 
     steps:
@@ -156,6 +162,8 @@ jobs:
           firmware-artifacts/esp32-photoframe-seeedstudio_xiao_ee04.bin
           firmware-artifacts/photoframe-firmware-dfrobot_firebeetle_esp32e-merged.bin
           firmware-artifacts/esp32-photoframe-dfrobot_firebeetle_esp32e.bin
+          firmware-artifacts/photoframe-firmware-dfrobot_firebeetle_esp32s3-merged.bin
+          firmware-artifacts/esp32-photoframe-dfrobot_firebeetle_esp32s3.bin
         body: |
           ## What's New
 
@@ -165,7 +173,7 @@ jobs:
           ### Web Flasher (Easiest)
 
           Flash directly from your browser (Chrome/Edge/Opera required):
-          **[https://aitjcize.github.io/esp32-photoframe/#flash](https://aitjcize.github.io/esp32-photoframe/)**
+          **[https://snille.github.io/esp32-photoframe/#flash](https://snille.github.io/esp32-photoframe/)**
 
           ### Manually
           Choose the appropriate merged binary for your board:
@@ -174,9 +182,10 @@ jobs:
           - `photoframe-firmware-seeedstudio_reterminal_e1002-merged.bin`: For Seeed reTerminal E1002
           - `photoframe-firmware-seeedstudio_xiao_ee04-merged.bin`: For Seeed XIAO EE04
           - `photoframe-firmware-dfrobot_firebeetle_esp32e-merged.bin`: For DFRobot FireBeetle 2 ESP32-E + Waveshare 4" HAT+ E
+          - `photoframe-firmware-dfrobot_firebeetle_esp32s3-merged.bin`: For DFRobot FireBeetle 2 ESP32-S3 + Waveshare 4" HAT+ E
 
           ```bash
-          # ESP32-S3 boards (Waveshare/Seeed): flash the merged bin at 0x0
+          # ESP32-S3 boards (Waveshare/Seeed/FireBeetle S3): flash the merged bin at 0x0
           esptool.py --chip esp32s3 --port /dev/ttyUSB0 --baud 921600 write_flash 0x0 photoframe-firmware-[board]-merged.bin
           # DFRobot FireBeetle (classic ESP32): also flashed at 0x0 (the merged bin is padded from 0x0)
           esptool.py --chip esp32 --port /dev/ttyUSB0 --baud 921600 write_flash 0x0 photoframe-firmware-dfrobot_firebeetle_esp32e-merged.bin
@@ -268,7 +277,7 @@ jobs:
         fi
         echo "Stable version: ${STABLE_TAG:-none}"
 
-        BOARDS="waveshare_photopainter_73 seeedstudio_xiao_ee02 seeedstudio_reterminal_e1002 seeedstudio_xiao_ee04 dfrobot_firebeetle_esp32e"
+        BOARDS="waveshare_photopainter_73 seeedstudio_xiao_ee02 seeedstudio_reterminal_e1002 seeedstudio_xiao_ee04 dfrobot_firebeetle_esp32e dfrobot_firebeetle_esp32s3"
 
         for board in $BOARDS; do
           mkdir -p "demo/$board"

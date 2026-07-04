@@ -63,11 +63,25 @@ menu "Board Configuration"
                 No SD card, no PMIC, no RTC.
                 Deep sleep via timer or wakeup button (if wired).
 
+        config BOARD_DRIVER_DFROBOT_FIREBEETLE_ESP32S3
+            bool "DFRobot FireBeetle 2 ESP32-S3 + Waveshare 4inch HAT+ E"
+            select EP_DRIVER_WS4IN_E6
+            help
+                Driver for DFRobot FireBeetle 2 ESP32-S3 (16MB flash, 8MB octal
+                PSRAM) paired with Waveshare 4inch e-Paper HAT+ E (Spectra 6,
+                600x400) — same display/wiring as the ESP32-E FireBeetle, but
+                with PSRAM headroom for HTTPS and dual-OTA partitions.
+                Uses DFRobot's ETA6003 charger; no VBAT sense pin or
+                charge-status GPIO is documented for this board, so battery
+                reporting is unsupported (revisit if a future rev exposes one).
+                Native USB is broken out, so USB-presence detection works.
+                No SD card, no PMIC, no RTC.
+
     endchoice
 
     config USE_INTERNAL_FLASH_STORAGE
         bool "Use internal flash as storage (LittleFS)"
-        default y if BOARD_DRIVER_SEEEDSTUDIO_XIAO_EE02 || BOARD_DRIVER_SEEEDSTUDIO_XIAO_EE04 || BOARD_DRIVER_SEEEDSTUDIO_RETERMINAL_E1002
+        default y if BOARD_DRIVER_SEEEDSTUDIO_XIAO_EE02 || BOARD_DRIVER_SEEEDSTUDIO_XIAO_EE04 || BOARD_DRIVER_SEEEDSTUDIO_RETERMINAL_E1002 || BOARD_DRIVER_DFROBOT_FIREBEETLE_ESP32S3
         default n
         help
             Mounts a LittleFS partition from internal flash to use as storage.

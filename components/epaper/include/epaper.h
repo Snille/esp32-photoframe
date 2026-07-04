@@ -28,8 +28,9 @@ typedef struct {
     int pin_dc;
     int pin_rst;
     int pin_busy;
-    int pin_cs1;     // For 13.3" Dual CS
-    int pin_enable;  // Optional power enable
+    int pin_cs1;       // For 13.3" Dual CS
+    int pin_enable;    // Optional power enable
+    int spi_clock_hz;  // 0 = driver's own default
 } epaper_config_t;
 
 /**

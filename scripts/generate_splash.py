@@ -55,6 +55,7 @@ MUTED = (150, 150, 150)
 # others). The splash is embedded raw and must match this exactly.
 NATIVE_DIMS = {
     "dfrobot_firebeetle_esp32e": (400, 600),  # driver_ws4in_e6
+    "dfrobot_firebeetle_esp32s3": (400, 600),  # driver_ws4in_e6 (same panel/HAT)
     "seeedstudio_xiao_ee02": (1200, 1600),  # driver_ed2208_nca
     "seeedstudio_xiao_ee04": (800, 480),  # driver_ed2208_gca
     "seeedstudio_reterminal_e1002": (800, 480),
@@ -75,6 +76,7 @@ MOUNT_LANDSCAPE = {b: True for b in NATIVE_DIMS}
 # on hardware: FireBeetle upright at 90, EE02 upright at 270 (90 was upside-down).
 ROTATION_DEG = {
     "dfrobot_firebeetle_esp32e": 90,
+    "dfrobot_firebeetle_esp32s3": 90,  # same panel/mounting as the ESP32-E FireBeetle
     "seeedstudio_xiao_ee02": 270,
 }
 

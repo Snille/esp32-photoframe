@@ -25,6 +25,8 @@ elseif(CONFIG_BOARD_DRIVER_SEEEDSTUDIO_RETERMINAL_E1002)
     list(APPEND SRCS "src/driver_seeedstudio_reterminal_e1002.c")
 elseif(CONFIG_BOARD_DRIVER_DFROBOT_FIREBEETLE_ESP32E)
     list(APPEND SRCS "src/driver_dfrobot_firebeetle_esp32e.c")
+elseif(CONFIG_BOARD_DRIVER_DFROBOT_FIREBEETLE_ESP32S3)
+    list(APPEND SRCS "src/driver_dfrobot_firebeetle_esp32s3.c")
 endif()
 
 idf_component_register(

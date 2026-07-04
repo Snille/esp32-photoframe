@@ -366,7 +366,7 @@ function scrollTo(id) {
               <button class="btn btn-ghost" @click="scrollTo('flash')">Flash my frame</button>
             </div>
             <div class="hero-meta">
-              <span><strong>5</strong> boards</span>
+              <span><strong>{{ supportedBoards.length }}</strong> boards</span>
               <span class="dot">·</span>
               <span><strong>6-color</strong> e-paper</span>
               <span class="dot">·</span>
@@ -527,7 +527,7 @@ function scrollTo(id) {
         </div>
         <h2 class="section-title">Off-the-shelf boards, <em class="wonk">opened</em> up.</h2>
         <p class="section-lede">
-          Bring your own hardware. Four ESP32-S3 photoframes plus the classic-ESP32 DFRobot
+          Bring your own hardware. Five ESP32-S3 photoframes plus the classic-ESP32 DFRobot
           FireBeetle are supported today, with a shared image pipeline and configuration.
         </p>
 
