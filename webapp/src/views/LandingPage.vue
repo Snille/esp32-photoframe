@@ -366,7 +366,9 @@ function scrollTo(id) {
               <button class="btn btn-ghost" @click="scrollTo('flash')">Flash my frame</button>
             </div>
             <div class="hero-meta">
-              <span><strong>{{ supportedBoards.length }}</strong> boards</span>
+              <span
+                ><strong>{{ supportedBoards.length }}</strong> boards</span
+              >
               <span class="dot">·</span>
               <span><strong>6-color</strong> e-paper</span>
               <span class="dot">·</span>
