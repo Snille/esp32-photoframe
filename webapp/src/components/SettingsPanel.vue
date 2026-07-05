@@ -763,6 +763,30 @@ async function enterFlashMode() {
               </v-alert>
             </v-expand-transition>
 
+            <template v-if="settingsStore.deviceSettings.batteryAdcGpioOptions.length">
+              <v-divider class="my-4" />
+
+              <div class="text-subtitle-1 mb-1">Battery Voltage (external divider)</div>
+              <div class="text-caption text-medium-emphasis mb-3">
+                This board has no built-in battery sensor. If you've wired an external 1MΩ+1MΩ
+                divider from VBAT to one of the pins below, select it here to enable battery
+                reporting.
+              </div>
+              <v-select
+                v-model="settingsStore.deviceSettings.batteryAdcGpio"
+                :items="[
+                  { title: 'Not connected', value: null },
+                  ...settingsStore.deviceSettings.batteryAdcGpioOptions.map((o) => ({
+                    title: o.label,
+                    value: o.gpio,
+                  })),
+                ]"
+                label="Battery ADC pin"
+                variant="outlined"
+                density="compact"
+              />
+            </template>
+
             <v-divider class="my-4" />
 
             <div class="text-subtitle-1 mb-1">Button</div>

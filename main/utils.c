@@ -307,6 +307,22 @@ esp_err_t apply_config_from_json(cJSON *root)
         power_manager_set_deep_sleep_enabled(cJSON_IsTrue(item));
     }
 
+    // Optional external battery voltage divider pin (boards with no built-in
+    // battery ADC only). -1 disables it. Invalid pins are logged and ignored
+    // rather than failing the whole config save -- the WebGUI only ever sends
+    // values from the board's own option list, so a mismatch here means a
+    // stale/manual request, not something the user needs a hard error for.
+    item = cJSON_GetObjectItem(root, "battery_adc_gpio");
+    if (item && cJSON_IsNumber(item)) {
+        esp_err_t adc_ret = board_hal_set_battery_adc_pin(item->valueint);
+        if (adc_ret == ESP_OK) {
+            config_manager_set_battery_adc_gpio(item->valueint);
+        } else {
+            ESP_LOGW(TAG, "Ignoring battery_adc_gpio=%d: %s", item->valueint,
+                     esp_err_to_name(adc_ret));
+        }
+    }
+
     // Button gestures → actions
     item = cJSON_GetObjectItem(root, "button_action_short");
     if (item && cJSON_IsString(item)) {
@@ -763,6 +779,17 @@ esp_err_t fetch_and_save_image_from_url(const char *url, char *saved_image_path,
             char batt_mv_str[12];
             snprintf(batt_mv_str, sizeof(batt_mv_str), "%i", batt_mv);
             esp_http_client_set_header(client, "X-Battery-Voltage", batt_mv_str);
+        }
+
+        // Mirror which GPIO (if any) an external battery voltage divider is
+        // wired to, so the server can display it in the device list. Only
+        // meaningful on boards with a user-configurable pin (see
+        // board_hal_get_battery_adc_pin_options()); omitted elsewhere.
+        int batt_adc_pin = board_hal_get_battery_adc_pin();
+        if (batt_adc_pin >= 0) {
+            char batt_adc_pin_str[12];
+            snprintf(batt_adc_pin_str, sizeof(batt_adc_pin_str), "%i", batt_adc_pin);
+            esp_http_client_set_header(client, "X-Battery-ADC-Pin", batt_adc_pin_str);
         }
 
         // Report a coarse charge status the server can surface in Home Assistant.

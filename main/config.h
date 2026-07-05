@@ -105,6 +105,10 @@ typedef enum {
 
 // Power
 #define NVS_DEEP_SLEEP_KEY "deep_sleep"
+// GPIO for an optional user-wired external battery voltage divider, on boards
+// with no built-in battery ADC (see board_hal_get_battery_adc_pin_options()).
+// -1 = not configured.
+#define NVS_BATTERY_ADC_GPIO_KEY "batt_adc_gpio"
 
 // Button gestures → actions (configurable from the WebUI). Action ids:
 // "none", "next_image", "sleep", "toggle_deep_sleep", "info_screen".

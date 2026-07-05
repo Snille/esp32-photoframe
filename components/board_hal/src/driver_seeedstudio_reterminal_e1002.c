@@ -301,6 +301,25 @@ bool board_hal_supports_charge_status(void)
     return false;
 }
 
+// Battery ADC is fixed at compile time on this board (see above) rather than
+// user-selectable, so there's nothing to enumerate/reconfigure at runtime.
+int board_hal_get_battery_adc_pin_options(const board_hal_battery_adc_pin_t **out_pins)
+{
+    (void) out_pins;
+    return 0;
+}
+
+esp_err_t board_hal_set_battery_adc_pin(int gpio_num)
+{
+    (void) gpio_num;
+    return ESP_ERR_NOT_SUPPORTED;
+}
+
+int board_hal_get_battery_adc_pin(void)
+{
+    return -1;
+}
+
 bool board_hal_is_usb_connected(void)
 {
     return usb_serial_jtag_is_connected();

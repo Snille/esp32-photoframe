@@ -1783,6 +1783,20 @@ static esp_err_t config_handler(httpd_req_t *req)
         // Other
         cJSON_AddBoolToObject(root, "deep_sleep_enabled", config_manager_get_deep_sleep_enabled());
 
+        // Optional external battery voltage divider (boards with no built-in
+        // battery ADC only). The options array is empty on boards that don't
+        // support this at all, so the WebGUI can hide the control entirely.
+        cJSON_AddNumberToObject(root, "battery_adc_gpio", config_manager_get_battery_adc_gpio());
+        cJSON *battery_adc_options = cJSON_AddArrayToObject(root, "battery_adc_gpio_options");
+        const board_hal_battery_adc_pin_t *adc_pin_options = NULL;
+        int adc_pin_option_count = board_hal_get_battery_adc_pin_options(&adc_pin_options);
+        for (int i = 0; i < adc_pin_option_count; i++) {
+            cJSON *opt = cJSON_CreateObject();
+            cJSON_AddNumberToObject(opt, "gpio", adc_pin_options[i].gpio_num);
+            cJSON_AddStringToObject(opt, "label", adc_pin_options[i].label);
+            cJSON_AddItemToArray(battery_adc_options, opt);
+        }
+
         // Button gestures → actions
         cJSON_AddStringToObject(root, "button_action_short",
                                 config_manager_get_button_action_short());

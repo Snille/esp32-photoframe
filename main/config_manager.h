@@ -126,6 +126,11 @@ const char *config_manager_get_ai_prompt(void);
 void config_manager_set_deep_sleep_enabled(bool enabled);
 bool config_manager_get_deep_sleep_enabled(void);
 
+// GPIO for an optional user-wired external battery voltage divider (boards
+// with no built-in battery ADC only). -1 = not configured.
+void config_manager_set_battery_adc_gpio(int gpio_num);
+int config_manager_get_battery_adc_gpio(void);
+
 // ============================================================================
 // Button gestures → actions
 // ============================================================================

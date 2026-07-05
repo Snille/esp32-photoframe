@@ -123,7 +123,7 @@ static void board_hal_battery_adc_init(void)
     }
 }
 
-int board_hal_get_battery_voltage(void)
+static int read_vbat_mv_raw(void)
 {
     board_hal_battery_adc_init();
     if (!bat_adc_handle)
@@ -148,6 +148,74 @@ int board_hal_get_battery_voltage(void)
     }
     // Fallback: linear scaling (12-bit, ~3.3V full-scale at this attenuation)
     return (int) ((float) avg_raw * (3300.0f / 4095.0f) * VBAT_DIVIDER);
+}
+
+// A single-wake drop bigger than this (mV) vs. the last CONFIRMED reading is
+// treated as a suspect WiFi-TX rail sag rather than a real level change — see
+// the identical mechanism (and its rationale, including the overnight-data
+// replay behind VBAT_REQUIRED_AGREEMENTS=3) in driver_seeedstudio_xiao_ee02.c.
+// This board's 1M/1M divider is high-impedance and noisy (see the comment
+// above VBAT_ADC_CHANNEL), and unlike the EE02 driver this raw read had no
+// rejection at all before this — a single averaged-but-corrupted batch was
+// reported as-is, so if anything this board is MORE exposed to the same sag,
+// not less.
+#define VBAT_SUSPECT_DROP_MV 300
+#define VBAT_CONFIRM_TOLERANCE_MV 150
+#define VBAT_REQUIRED_AGREEMENTS 3
+
+// Persisted across deep sleep (RTC memory) so a run of agreeing suspect
+// readings can be confirmed over several NEXT wakes instead of re-triggering
+// the same false alarm every time.
+RTC_DATA_ATTR static int s_vbat_last_confirmed_mv = -1;
+RTC_DATA_ATTR static int s_vbat_pending_mv = -1;
+RTC_DATA_ATTR static int s_vbat_pending_streak = 0;
+
+// See driver_seeedstudio_xiao_ee02.c's confirm_vbat_reading() for the full
+// rationale — identical logic, duplicated here since each board driver in
+// this codebase owns its own static state rather than sharing it.
+static int confirm_vbat_reading(int raw_mv)
+{
+    if (raw_mv <= 0) {
+        return s_vbat_last_confirmed_mv;
+    }
+    if (s_vbat_last_confirmed_mv <= 0) {
+        s_vbat_last_confirmed_mv = raw_mv;
+        s_vbat_pending_mv = -1;
+        s_vbat_pending_streak = 0;
+        return raw_mv;
+    }
+
+    int drop = s_vbat_last_confirmed_mv - raw_mv;
+    if (drop < VBAT_SUSPECT_DROP_MV) {
+        s_vbat_last_confirmed_mv = raw_mv;
+        s_vbat_pending_mv = -1;
+        s_vbat_pending_streak = 0;
+        return raw_mv;
+    }
+
+    int pending_diff = s_vbat_pending_mv > 0 ? raw_mv - s_vbat_pending_mv : 0;
+    if (pending_diff < 0)
+        pending_diff = -pending_diff;
+    if (s_vbat_pending_mv > 0 && pending_diff < VBAT_CONFIRM_TOLERANCE_MV) {
+        s_vbat_pending_streak++;
+    } else {
+        s_vbat_pending_mv = raw_mv;
+        s_vbat_pending_streak = 1;
+    }
+
+    if (s_vbat_pending_streak >= VBAT_REQUIRED_AGREEMENTS) {
+        s_vbat_last_confirmed_mv = raw_mv;
+        s_vbat_pending_mv = -1;
+        s_vbat_pending_streak = 0;
+        return raw_mv;
+    }
+
+    return s_vbat_last_confirmed_mv;
+}
+
+int board_hal_get_battery_voltage(void)
+{
+    return confirm_vbat_reading(read_vbat_mv_raw());
 }
 
 bool board_hal_is_battery_connected(void)
@@ -199,6 +267,25 @@ bool board_hal_supports_charge_status(void)
     // No charge-status line and no USB detection on classic ESP32 — nothing to
     // report. The server's voltage-regression trend remains the only signal.
     return false;
+}
+
+// Battery ADC is fixed at compile time on this board (see above) rather than
+// user-selectable, so there's nothing to enumerate/reconfigure at runtime.
+int board_hal_get_battery_adc_pin_options(const board_hal_battery_adc_pin_t **out_pins)
+{
+    (void) out_pins;
+    return 0;
+}
+
+esp_err_t board_hal_set_battery_adc_pin(int gpio_num)
+{
+    (void) gpio_num;
+    return ESP_ERR_NOT_SUPPORTED;
+}
+
+int board_hal_get_battery_adc_pin(void)
+{
+    return -1;
 }
 
 bool board_hal_is_usb_connected(void)

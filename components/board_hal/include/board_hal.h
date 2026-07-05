@@ -174,6 +174,47 @@ typedef enum {
  */
 void board_hal_led_set(board_hal_led_t led, bool on);
 
+// One selectable GPIO for a user-wired external battery voltage divider, on
+// boards with no built-in battery sensing circuit.
+typedef struct {
+    int gpio_num;
+    const char *label;  // e.g. "A3 (GPIO8)" -- matches the board's silkscreen
+} board_hal_battery_adc_pin_t;
+
+/**
+ * @brief List the GPIOs this board allows for a user-wired battery voltage
+ * divider (VBAT -- 1M -- pin -- 1M -- GND), for boards with no built-in
+ * battery ADC circuit.
+ *
+ * @param[out] out_pins Receives a pointer to a static array of options.
+ *                      Untouched if this board has no configurable pin.
+ * @return Number of options; 0 if this board doesn't support a
+ *         user-configurable battery ADC pin at all.
+ */
+int board_hal_get_battery_adc_pin_options(const board_hal_battery_adc_pin_t **out_pins);
+
+/**
+ * @brief Select (and immediately activate) the GPIO wired to an external
+ * battery voltage divider. Assumes a 1:2 divider (two equal resistors).
+ *
+ * Does not persist the choice -- callers should also save it (e.g. via
+ * config_manager) so it survives reboot, and re-apply it at boot.
+ *
+ * @param gpio_num One of the gpio_num values from
+ *        board_hal_get_battery_adc_pin_options(), or -1 to disable.
+ * @return ESP_OK on success, ESP_ERR_INVALID_ARG if gpio_num isn't a valid
+ *         option, ESP_ERR_NOT_SUPPORTED if this board has no configurable
+ *         battery ADC pin.
+ */
+esp_err_t board_hal_set_battery_adc_pin(int gpio_num);
+
+/**
+ * @brief Currently configured battery ADC GPIO.
+ *
+ * @return GPIO number, or -1 if none is configured / not supported.
+ */
+int board_hal_get_battery_adc_pin(void);
+
 #ifdef __cplusplus
 }
 #endif

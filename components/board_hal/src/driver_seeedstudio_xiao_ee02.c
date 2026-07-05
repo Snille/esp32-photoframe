@@ -145,6 +145,8 @@ bool board_hal_is_battery_connected(void)
 // Cache the last good read so battery percent and voltage (read by two separate
 // top-level calls during the same pull) are derived from ONE acquisition and
 // can't disagree (the old split caused "0 % @ 4090 mV" reports to the server).
+// Plain (non-RTC) static: only needs to survive within one awake period, not
+// across deep sleep.
 static int s_vbat_cached_mv = -1;
 static int64_t s_vbat_cached_us = 0;
 #define VBAT_CACHE_TTL_US (3 * 1000 * 1000)  // 3 s
@@ -180,13 +182,101 @@ static int read_vbat_mv_robust(void)
     return best;
 }
 
+// A single-wake drop bigger than this (mV) vs. the last CONFIRMED reading is
+// treated as a suspect WiFi-TX rail sag rather than a real level change: in
+// the field, real sags land at 3.3-3.4 V (inside VBAT_MIN_PLAUSIBLE_MV's own
+// "plausible" band above, so read_vbat_mv_robust's own filter doesn't catch
+// them), then bounce back to normal the very next wake. A healthy pack can't
+// move this much between 5-60 min wakes under normal drain; a real fast
+// drain confirms itself within a few more wakes instead (see below), so this
+// only ever delays reporting a genuine drop, never hides it.
+#define VBAT_SUSPECT_DROP_MV 300
+// Two candidates within this much of each other count as "the same" reading
+// for confirmation purposes (ADC/sampling noise, not a second sag).
+#define VBAT_CONFIRM_TOLERANCE_MV 150
+// How many consecutive wakes must agree (within tolerance) before a suspect
+// drop is trusted — i.e. this many total sightings of roughly the same value,
+// the first of which is what flags it as suspect. Replayed against a night of
+// real 5-min-interval field data (all 3 EE02 frames, ~130 wakes each, ~22% of
+// wakes showing a suspect drop): requiring 2 sightings left 4-9 false reports
+// per frame still getting through; requiring 3 cut that to 1-2. The cost is
+// only reporting latency, not battery life (no extra reads/wakes) — 2 extra
+// wake cycles' worth (e.g. ~30 min at a 15-min rotate interval) is a good
+// trade for cutting the false-positive rate under 1%.
+#define VBAT_REQUIRED_AGREEMENTS 3
+
+// Persisted across deep sleep (RTC memory) so a run of agreeing suspect
+// readings can be confirmed over several NEXT wakes rather than re-triggering
+// the same false alarm every time with no memory of it (deep sleep wipes
+// ordinary RAM, so plain statics would reset every wake and never accumulate
+// a streak).
+RTC_DATA_ATTR static int s_vbat_last_confirmed_mv = -1;
+RTC_DATA_ATTR static int s_vbat_pending_mv = -1;
+RTC_DATA_ATTR static int s_vbat_pending_streak = 0;
+
+// Requires a suspiciously large single-wake drop to repeat (within tolerance)
+// for VBAT_REQUIRED_AGREEMENTS consecutive wakes before trusting it — a
+// transient rail sag won't repeat that consistently, a real depleting battery
+// will. A rise is always trusted immediately: the rail only ever sags DOWN
+// under load, so a jump up can only be a real recharge, never sag noise, and
+// delaying it would hide genuine charge-detection signal for no reason.
+// Returns the value that should actually be reported this wake (may be the
+// previous confirmed value, if this wake's reading is still unconfirmed).
+static int confirm_vbat_reading(int raw_mv)
+{
+    if (raw_mv <= 0) {
+        // Acquisition failed entirely; report the last known-good value
+        // rather than nothing.
+        return s_vbat_last_confirmed_mv;
+    }
+    if (s_vbat_last_confirmed_mv <= 0) {
+        // First reading ever (fresh boot, nothing to compare against yet).
+        s_vbat_last_confirmed_mv = raw_mv;
+        s_vbat_pending_mv = -1;
+        s_vbat_pending_streak = 0;
+        return raw_mv;
+    }
+
+    int drop = s_vbat_last_confirmed_mv - raw_mv;
+    if (drop < VBAT_SUSPECT_DROP_MV) {
+        // Steady, rising, or a normal gradual decline — trust immediately.
+        s_vbat_last_confirmed_mv = raw_mv;
+        s_vbat_pending_mv = -1;
+        s_vbat_pending_streak = 0;
+        return raw_mv;
+    }
+
+    int pending_diff = s_vbat_pending_mv > 0 ? raw_mv - s_vbat_pending_mv : 0;
+    if (pending_diff < 0)
+        pending_diff = -pending_diff;
+    if (s_vbat_pending_mv > 0 && pending_diff < VBAT_CONFIRM_TOLERANCE_MV) {
+        // This wake agrees with the run so far.
+        s_vbat_pending_streak++;
+    } else {
+        // A new (or first) suspect value — restart the streak.
+        s_vbat_pending_mv = raw_mv;
+        s_vbat_pending_streak = 1;
+    }
+
+    if (s_vbat_pending_streak >= VBAT_REQUIRED_AGREEMENTS) {
+        // Seen consistently enough times in a row — confirmed.
+        s_vbat_last_confirmed_mv = raw_mv;
+        s_vbat_pending_mv = -1;
+        s_vbat_pending_streak = 0;
+        return raw_mv;
+    }
+
+    // Still unconfirmed: keep reporting the last confirmed value.
+    return s_vbat_last_confirmed_mv;
+}
+
 int board_hal_get_battery_voltage(void)
 {
     int64_t now = esp_timer_get_time();
     if (s_vbat_cached_mv > 0 && (now - s_vbat_cached_us) < VBAT_CACHE_TTL_US) {
         return s_vbat_cached_mv;
     }
-    int mv = read_vbat_mv_robust();
+    int mv = confirm_vbat_reading(read_vbat_mv_robust());
     if (mv > 0) {
         s_vbat_cached_mv = mv;
         s_vbat_cached_us = now;
@@ -228,6 +318,25 @@ bool board_hal_supports_charge_status(void)
     // report a (misleading) status. The server derives charge direction from the
     // battery-voltage trend instead.
     return false;
+}
+
+// Battery ADC is fixed at compile time on this board (see above) rather than
+// user-selectable, so there's nothing to enumerate/reconfigure at runtime.
+int board_hal_get_battery_adc_pin_options(const board_hal_battery_adc_pin_t **out_pins)
+{
+    (void) out_pins;
+    return 0;
+}
+
+esp_err_t board_hal_set_battery_adc_pin(int gpio_num)
+{
+    (void) gpio_num;
+    return ESP_ERR_NOT_SUPPORTED;
+}
+
+int board_hal_get_battery_adc_pin(void)
+{
+    return -1;
 }
 
 bool board_hal_is_usb_connected(void)

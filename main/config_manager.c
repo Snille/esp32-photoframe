@@ -55,6 +55,7 @@ static char ai_prompt[AI_PROMPT_MAX_LEN] = {0};
 
 // Power
 static bool deep_sleep_enabled = true;  // Enabled by default
+static int battery_adc_gpio = -1;       // -1 = no external divider configured
 
 // Button gestures → actions
 static char btn_action_short[BUTTON_ACTION_MAX_LEN] = DEFAULT_BTN_SHORT_ACTION;
@@ -298,6 +299,12 @@ esp_err_t config_manager_init(void)
             deep_sleep_enabled = (deep_sleep_val != 0);
             ESP_LOGI(TAG, "Loaded deep sleep setting from NVS: %s",
                      deep_sleep_enabled ? "enabled" : "disabled");
+        }
+
+        int32_t stored_battery_adc_gpio = -1;
+        if (nvs_get_i32(nvs_handle, NVS_BATTERY_ADC_GPIO_KEY, &stored_battery_adc_gpio) == ESP_OK) {
+            battery_adc_gpio = stored_battery_adc_gpio;
+            ESP_LOGI(TAG, "Loaded battery ADC pin from NVS: GPIO%d", battery_adc_gpio);
         }
 
         // Button gestures → actions (fall back to compiled defaults if unset)
@@ -1028,6 +1035,25 @@ void config_manager_set_deep_sleep_enabled(bool enabled)
 bool config_manager_get_deep_sleep_enabled(void)
 {
     return deep_sleep_enabled;
+}
+
+void config_manager_set_battery_adc_gpio(int gpio_num)
+{
+    battery_adc_gpio = gpio_num;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_i32(nvs_handle, NVS_BATTERY_ADC_GPIO_KEY, gpio_num);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+
+    ESP_LOGI(TAG, "Battery ADC pin set to GPIO%d", gpio_num);
+}
+
+int config_manager_get_battery_adc_gpio(void)
+{
+    return battery_adc_gpio;
 }
 
 // --- Button gestures → actions ---

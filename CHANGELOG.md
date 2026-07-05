@@ -5,10 +5,39 @@ support for the **DFRobot FireBeetle 2 ESP32-E** driving a **Waveshare 4" e-Pape
 HAT+ E (Spectra 6, 400×600)** — layered on top of upstream
 [aitjcize/esp32-photoframe](https://github.com/aitjcize/esp32-photoframe).
 
-CI now builds **all five boards** (the four ESP32-S3 frames plus the classic-ESP32
+CI now builds **all six boards** (the five ESP32-S3 frames plus the classic-ESP32
 DFRobot FireBeetle) on **ESP-IDF v6.0** from a single `v<version>` tag; each
 release carries every board's flashable factory bin and drives the web flasher.
 (The old manual `firebeetle-v<version>` line is retired.)
+
+## 2.11.0
+
+### Added
+- **Battery voltage sensing on the FireBeetle 2 ESP32-S3** via an optional
+  user-wired external voltage divider (VBAT — 1MΩ — GPIO — 1MΩ — GND). This
+  board has no built-in battery ADC (confirmed against the schematic: the
+  charger IC's STAT line only drives a status LED, and the onboard AXP313A
+  PMIC powers only the camera FPC from VCC/USB, not the battery). The frame's
+  local WebGUI (Power tab) now offers a pin picker — A0/A1/A2/A3 (GPIO4/5/6/8),
+  the only free ADC1-capable, non-strapping pins on this board — persisted in
+  NVS and applied live. The chosen pin (and the resulting voltage) is reported
+  to the server as before, plus a new `X-Battery-ADC-Pin` header so the server
+  can mirror which pin is configured.
+- New generic `board_hal` capability API
+  (`board_hal_get_battery_adc_pin_options` / `set_battery_adc_pin` /
+  `get_battery_adc_pin`) for boards that support a user-configurable battery
+  ADC pin; every other board reports zero options (no-op).
+
+### Fixed
+- **Battery percentage no longer briefly flickers to an implausible value on
+  the FireBeetle 2 ESP32-E and Seeed XIAO EE02.** WiFi-TX current draw can sag
+  the battery rail momentarily into a lower-but-still-"plausible" voltage band,
+  which the LiPo discharge curve reads as a real, much lower charge level. A
+  reading that drops more than 300mV from the last confirmed value is now held
+  back until it repeats 3 times in a row (quantified against overnight data
+  from three frames: ~22% suspect-drop rate per read, reduced to <1% residual
+  false positives with 3-reading confirmation) — otherwise the last confirmed
+  reading is reported instead of the spike.
 
 ## 2.10.13
 

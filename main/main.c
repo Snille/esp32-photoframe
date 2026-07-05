@@ -348,6 +348,19 @@ void app_main(void)
 
     ESP_ERROR_CHECK(config_manager_init());
 
+    // Re-apply a previously configured external battery voltage divider pin
+    // (boards with no built-in battery ADC only; no-op elsewhere). board_hal
+    // starts each boot with no ADC configured since board_hal_init() runs
+    // before config_manager_init() loads NVS, so this has to happen here.
+    int stored_battery_adc_gpio = config_manager_get_battery_adc_gpio();
+    if (stored_battery_adc_gpio >= 0) {
+        esp_err_t batt_adc_ret = board_hal_set_battery_adc_pin(stored_battery_adc_gpio);
+        if (batt_adc_ret != ESP_OK) {
+            ESP_LOGW(TAG, "Failed to apply stored battery ADC pin GPIO%d: %s",
+                     stored_battery_adc_gpio, esp_err_to_name(batt_adc_ret));
+        }
+    }
+
     // Always restore time from external RTC (internal RTC is inaccurate)
     ESP_LOGI(TAG, "Checking external RTC for time restoration...");
     bool time_restored = false;

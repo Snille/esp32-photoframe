@@ -49,6 +49,12 @@ export const useSettingsStore = defineStore("settings", () => {
     haUrl: "",
     // Power
     deepSleepEnabled: true,
+    // Optional external battery voltage divider pin (boards with no built-in
+    // battery ADC only). null = not configured. batteryAdcGpioOptions is
+    // populated from the server response; empty on boards that don't support
+    // this at all.
+    batteryAdcGpio: null,
+    batteryAdcGpioOptions: [],
     // Button gestures → actions
     buttonActionShort: "next_image",
     buttonActionLong: "sleep",
@@ -183,6 +189,9 @@ export const useSettingsStore = defineStore("settings", () => {
       deviceSettings.value.caCertSet = data.ca_cert_set || false;
       deviceSettings.value.lastFetchError = data.last_fetch_error || "";
       deviceSettings.value.deepSleepEnabled = data.deep_sleep_enabled !== false;
+      deviceSettings.value.batteryAdcGpio =
+        data.battery_adc_gpio >= 0 ? data.battery_adc_gpio : null;
+      deviceSettings.value.batteryAdcGpioOptions = data.battery_adc_gpio_options || [];
       deviceSettings.value.buttonActionShort = data.button_action_short || "next_image";
       deviceSettings.value.buttonActionLong = data.button_action_long || "sleep";
       deviceSettings.value.buttonActionHold = data.button_action_hold || "info_screen";
@@ -273,6 +282,7 @@ export const useSettingsStore = defineStore("settings", () => {
       image_url: deviceSettings.value.imageUrl,
       ha_url: deviceSettings.value.haUrl,
       deep_sleep_enabled: deviceSettings.value.deepSleepEnabled,
+      battery_adc_gpio: deviceSettings.value.batteryAdcGpio ?? -1,
       button_action_short: deviceSettings.value.buttonActionShort,
       button_action_long: deviceSettings.value.buttonActionLong,
       button_action_hold: deviceSettings.value.buttonActionHold,
