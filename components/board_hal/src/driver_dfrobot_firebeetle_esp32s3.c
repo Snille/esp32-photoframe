@@ -214,8 +214,7 @@ esp_err_t board_hal_battery_prime_reading(void)
     }
     // Three quick reads, taken before WiFi starts (see main.c), averaged by
     // the shared helper — the quietest point in the wake cycle.
-    int mv =
-        confirm_vbat_reading(battery_adc_read_mv_multi(s_vbat_adc, 3, VBAT_MIN_PLAUSIBLE_MV));
+    int mv = confirm_vbat_reading(battery_adc_read_mv_multi(s_vbat_adc, 3, VBAT_MIN_PLAUSIBLE_MV));
     if (mv <= 0) {
         return ESP_FAIL;
     }
