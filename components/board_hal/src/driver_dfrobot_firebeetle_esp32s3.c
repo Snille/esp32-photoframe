@@ -75,8 +75,17 @@ static const board_hal_battery_adc_pin_t s_battery_adc_pin_options[] = {
 
 #define VBAT_VOLTAGE_DIVIDER 2.0f  // two equal resistors (e.g. 1M + 1M)
 
+// Lowest believable resting voltage for a running pack; below this the read
+// is likely a transient collapse rather than a genuinely low pack.
+#define VBAT_MIN_PLAUSIBLE_MV 3300
+
 static battery_adc_t *s_vbat_adc = NULL;
 static int s_vbat_adc_gpio = -1;
+
+// Set once per wake by board_hal_battery_prime_reading() (before WiFi starts)
+// and reused for the rest of the wake; see the EE02 driver for the full
+// rationale. Plain (non-RTC) static: doesn't need to survive deep sleep.
+static int s_vbat_cached_mv = -1;
 
 // GPIO -> ADC1 channel, for the pins in s_battery_adc_pin_options. ESP32-S3
 // ADC1 channels map 1:1 to GPIO1-10 (channel = gpio - 1).
@@ -98,6 +107,7 @@ esp_err_t board_hal_set_battery_adc_pin(int gpio_num)
         s_vbat_adc = NULL;
     }
     s_vbat_adc_gpio = -1;
+    s_vbat_cached_mv = -1;  // stale for the previous pin/divider, if any
 
     if (gpio_num < 0) {
         ESP_LOGI(TAG, "Battery ADC pin disabled");
@@ -196,11 +206,38 @@ static int confirm_vbat_reading(int raw_mv)
     return s_vbat_last_confirmed_mv;
 }
 
+esp_err_t board_hal_battery_prime_reading(void)
+{
+    if (!s_vbat_adc) {
+        // No divider wired / no pin selected on the frame's own WebGUI.
+        return ESP_ERR_NOT_SUPPORTED;
+    }
+    // Three quick reads, taken before WiFi starts (see main.c), averaged by
+    // the shared helper — the quietest point in the wake cycle.
+    int mv =
+        confirm_vbat_reading(battery_adc_read_mv_multi(s_vbat_adc, 3, VBAT_MIN_PLAUSIBLE_MV));
+    if (mv <= 0) {
+        return ESP_FAIL;
+    }
+    s_vbat_cached_mv = mv;
+    ESP_LOGI(TAG, "Battery primed: %d mV", mv);
+    return ESP_OK;
+}
+
 int board_hal_get_battery_voltage(void)
 {
+    if (s_vbat_cached_mv > 0) {
+        return s_vbat_cached_mv;
+    }
     if (!s_vbat_adc)
         return -1;
-    return confirm_vbat_reading(battery_adc_read_mv(s_vbat_adc));
+    // Priming wasn't called or failed; fall back to a live read (may be
+    // exposed to WiFi-TX sag if this happens mid-pull).
+    int mv = confirm_vbat_reading(battery_adc_read_mv(s_vbat_adc));
+    if (mv > 0) {
+        s_vbat_cached_mv = mv;
+    }
+    return mv;
 }
 
 bool board_hal_is_battery_connected(void)

@@ -6,7 +6,6 @@
 #include "esp_adc/adc_oneshot.h"
 #include "esp_log.h"
 #include "esp_sleep.h"
-#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -145,11 +144,12 @@ bool board_hal_is_battery_connected(void)
 // Cache the last good read so battery percent and voltage (read by two separate
 // top-level calls during the same pull) are derived from ONE acquisition and
 // can't disagree (the old split caused "0 % @ 4090 mV" reports to the server).
-// Plain (non-RTC) static: only needs to survive within one awake period, not
-// across deep sleep.
+// Set once per wake by board_hal_battery_prime_reading() (called before WiFi
+// starts, so it's never exposed to a TX-induced sag) and reused for the rest
+// of the wake — no TTL, since a retry loop taking longer than a few seconds
+// must still avoid a live re-read mid-transmit. Plain (non-RTC) static: only
+// needs to survive within one awake period, not across deep sleep.
 static int s_vbat_cached_mv = -1;
-static int64_t s_vbat_cached_us = 0;
-#define VBAT_CACHE_TTL_US (3 * 1000 * 1000)  // 3 s
 
 // Read the pack voltage, rejecting transient collapses. The rail only ever sags
 // DOWN under load, so we sample a few times and keep the plausible reads: up to
@@ -158,28 +158,9 @@ static int64_t s_vbat_cached_us = 0;
 // voltage. Returns mV, or -1 if every acquisition failed.
 static int read_vbat_mv_robust(void)
 {
-    int best = -1;
-    long sum = 0;
-    int n = 0;
-    for (int i = 0; i < 5 && n < 3; i++) {
-        // The helper toggles the TPS22916 load switch, averages several samples
-        // and applies eFuse calibration + the divider; mV or -1 on failure.
-        int mv = battery_adc_read_mv(vbat_adc);
-        if (mv <= 0) {
-            continue;
-        }
-        if (mv > best) {
-            best = mv;
-        }
-        if (mv >= VBAT_MIN_PLAUSIBLE_MV) {
-            sum += mv;
-            n++;
-        }
-    }
-    if (n > 0) {
-        return (int) (sum / n);
-    }
-    return best;
+    // The helper toggles the TPS22916 load switch, averages several samples
+    // per acquisition and applies eFuse calibration + the divider.
+    return battery_adc_read_mv_multi(vbat_adc, 5, VBAT_MIN_PLAUSIBLE_MV);
 }
 
 // A single-wake drop bigger than this (mV) vs. the last CONFIRMED reading is
@@ -270,16 +251,30 @@ static int confirm_vbat_reading(int raw_mv)
     return s_vbat_last_confirmed_mv;
 }
 
+esp_err_t board_hal_battery_prime_reading(void)
+{
+    // Three quick reads, taken before WiFi starts (see main.c), averaged by
+    // the shared helper — the quietest point in the wake cycle, so this
+    // should never see a WiFi-TX sag in the first place.
+    int mv = confirm_vbat_reading(battery_adc_read_mv_multi(vbat_adc, 3, VBAT_MIN_PLAUSIBLE_MV));
+    if (mv <= 0) {
+        return ESP_FAIL;
+    }
+    s_vbat_cached_mv = mv;
+    ESP_LOGI(TAG, "Battery primed: %d mV", mv);
+    return ESP_OK;
+}
+
 int board_hal_get_battery_voltage(void)
 {
-    int64_t now = esp_timer_get_time();
-    if (s_vbat_cached_mv > 0 && (now - s_vbat_cached_us) < VBAT_CACHE_TTL_US) {
+    if (s_vbat_cached_mv > 0) {
         return s_vbat_cached_mv;
     }
+    // Priming wasn't called or failed; fall back to a live read (may be
+    // exposed to WiFi-TX sag if this happens mid-pull).
     int mv = confirm_vbat_reading(read_vbat_mv_robust());
     if (mv > 0) {
         s_vbat_cached_mv = mv;
-        s_vbat_cached_us = now;
     }
     return mv;
 }

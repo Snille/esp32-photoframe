@@ -117,6 +117,17 @@ static void rotation_timer_task(void *arg)
                     board_hal_is_usb_connected() ? "USB powered" : "deep sleep disabled";
                 ESP_LOGI(TAG, "Active rotation triggered (%s)", reason);
 
+                // Deep-sleep devices get a fresh, WiFi-quiet battery reading
+                // every wake because board_hal_battery_prime_reading() runs
+                // once per real reboot (main.c, before WiFi starts). A device
+                // that stays awake here (deep sleep disabled, or USB
+                // powered) never reboots between rotations, so without this
+                // call its cached reading would freeze at whatever it primed
+                // at the one real boot. Re-prime right before the fetch (not
+                // WiFi-quiet in this mode since the radio stays connected,
+                // but at least not mid-transfer).
+                board_hal_battery_prime_reading();
+
                 trigger_image_rotation();
                 ha_notify_update();
 

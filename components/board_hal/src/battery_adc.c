@@ -123,6 +123,30 @@ int battery_adc_read_mv(battery_adc_t *ctx)
     return (int) ((float) raw_avg * (3300.0f / 4095.0f) * cfg->divider * scale);
 }
 
+int battery_adc_read_mv_multi(battery_adc_t *ctx, int attempts, int min_plausible_mv)
+{
+    if (attempts < 1)
+        attempts = 1;
+
+    int best = -1;
+    long sum = 0;
+    int n = 0;
+    for (int i = 0; i < attempts; i++) {
+        int mv = battery_adc_read_mv(ctx);
+        if (mv <= 0)
+            continue;
+        if (mv > best)
+            best = mv;
+        if (mv >= min_plausible_mv) {
+            sum += mv;
+            n++;
+        }
+    }
+    if (n > 0)
+        return (int) (sum / n);
+    return best;
+}
+
 void battery_adc_destroy(battery_adc_t *ctx)
 {
     if (!ctx)

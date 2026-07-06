@@ -10,6 +10,30 @@ DFRobot FireBeetle) on **ESP-IDF v6.0** from a single `v<version>` tag; each
 release carries every board's flashable factory bin and drives the web flasher.
 (The old manual `firebeetle-v<version>` line is retired.)
 
+## 2.12.0
+
+### Fixed
+- **Battery percent/voltage no longer jump around between wakes on boards with a
+  raw voltage-divider ADC** (EE02, EE04, reTerminal E1002, FireBeetle 2
+  ESP32-E/ESP32-S3). The reading used to happen live at HTTP-request time —
+  after WiFi was already connected and transmitting — so a WiFi-TX current
+  sag could land a bogus low reading right in the "plausible" band the
+  existing cross-wake filter couldn't catch. The battery is now read (a few
+  quick samples, averaged) once per wake **before WiFi starts**, cached, and
+  reused for the HTTP headers — the quietest point in the whole wake cycle.
+  New `board_hal_battery_prime_reading()` API, called from `main.c` right
+  after board init; every board with a battery ADC implements it, and
+  `waveshare_photopainter_73` (AXP2101 PMIC, unaffected by this) gets a no-op.
+- Boards running with deep sleep disabled (or on a board that stays awake
+  while USB-powered) now also get a fresh, WiFi-quiet-as-possible battery
+  reading every rotation — previously the one-per-wake cache never refreshed
+  because these boards never actually reboot between rotations, so the
+  reading froze at whatever it read the one time the frame did boot.
+- `X-Reset-Reason` (and the boot log) now names USB / JTAG / eFuse-error /
+  power-glitch / CPU-lockup / SDIO / external-pin resets instead of lumping
+  them all into an opaque "unknown" — useful for telling apart "still on the
+  bench, tethered to a debugger" from a genuine unexplained reset.
+
 ## 2.11.0
 
 ### Added

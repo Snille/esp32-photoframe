@@ -675,6 +675,30 @@ esp_err_t fetch_and_save_image_from_url(const char *url, char *saved_image_path,
         case ESP_RST_BROWNOUT:
             reset_reason = "brownout";
             break;
+        case ESP_RST_EXT:
+            reset_reason = "ext";
+            break;
+        case ESP_RST_SDIO:
+            reset_reason = "sdio";
+            break;
+        case ESP_RST_USB:
+            // Common on S3-family boards while a USB cable is attached to a
+            // host (flashing/debugging) — the native USB-Serial-JTAG
+            // peripheral resets the chip instead of a clean deep-sleep wake.
+            reset_reason = "usb";
+            break;
+        case ESP_RST_JTAG:
+            reset_reason = "jtag";
+            break;
+        case ESP_RST_EFUSE:
+            reset_reason = "efuse";
+            break;
+        case ESP_RST_PWR_GLITCH:
+            reset_reason = "pwr_glitch";
+            break;
+        case ESP_RST_CPU_LOCKUP:
+            reset_reason = "cpu_lockup";
+            break;
         default:
             reset_reason = "unknown";
             break;

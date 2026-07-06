@@ -48,6 +48,22 @@ esp_err_t battery_adc_create(const battery_adc_config_t *cfg, battery_adc_t **ou
  */
 int battery_adc_read_mv(battery_adc_t *ctx);
 
+/**
+ * @brief Read battery voltage several times and average the plausible reads.
+ *
+ * The rail only ever sags DOWN under load (e.g. WiFi TX), never up, so this
+ * samples up to `attempts` times and averages the reads that meet
+ * `min_plausible_mv`; if none qualify (genuinely low pack) it returns the
+ * highest read seen, which is closest to the true resting voltage.
+ *
+ * @param ctx Handle from battery_adc_create().
+ * @param attempts Max number of acquisitions to try (each already averages
+ *        cfg->samples raw ADC samples internally).
+ * @param min_plausible_mv Reads at or above this are treated as trustworthy.
+ * @return Averaged mV, or -1 if every acquisition failed.
+ */
+int battery_adc_read_mv_multi(battery_adc_t *ctx, int attempts, int min_plausible_mv);
+
 /** @brief Tear down the ADC unit + calibration scheme and free the handle. */
 void battery_adc_destroy(battery_adc_t *ctx);
 

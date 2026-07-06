@@ -20,6 +20,69 @@ static const char *TAG = "board_hal_ee04";
 
 static adc_oneshot_unit_handle_t adc_handle = NULL;
 
+// Lowest believable resting voltage for a running pack; below this the read
+// is likely a transient collapse (e.g. WiFi-TX rail sag) rather than a
+// genuinely low pack. Same value used by the EE02/FireBeetle drivers.
+#define VBAT_MIN_PLAUSIBLE_MV 3300
+
+// A single-wake drop bigger than this (mV) vs. the last CONFIRMED reading is
+// treated as a suspect WiFi-TX rail sag rather than a real level change — see
+// driver_seeedstudio_xiao_ee02.c's confirm_vbat_reading() for the full
+// rationale (identical logic, duplicated here since each board driver in this
+// codebase owns its own static state rather than sharing it).
+#define VBAT_SUSPECT_DROP_MV 300
+#define VBAT_CONFIRM_TOLERANCE_MV 150
+#define VBAT_REQUIRED_AGREEMENTS 3
+
+RTC_DATA_ATTR static int s_vbat_last_confirmed_mv = -1;
+RTC_DATA_ATTR static int s_vbat_pending_mv = -1;
+RTC_DATA_ATTR static int s_vbat_pending_streak = 0;
+
+// Set once per wake by board_hal_battery_prime_reading() (before WiFi
+// starts) and reused for the rest of the wake. Plain (non-RTC) static:
+// doesn't need to survive deep sleep.
+static int s_vbat_cached_mv = -1;
+
+static int confirm_vbat_reading(int raw_mv)
+{
+    if (raw_mv <= 0) {
+        return s_vbat_last_confirmed_mv;
+    }
+    if (s_vbat_last_confirmed_mv <= 0) {
+        s_vbat_last_confirmed_mv = raw_mv;
+        s_vbat_pending_mv = -1;
+        s_vbat_pending_streak = 0;
+        return raw_mv;
+    }
+
+    int drop = s_vbat_last_confirmed_mv - raw_mv;
+    if (drop < VBAT_SUSPECT_DROP_MV) {
+        s_vbat_last_confirmed_mv = raw_mv;
+        s_vbat_pending_mv = -1;
+        s_vbat_pending_streak = 0;
+        return raw_mv;
+    }
+
+    int pending_diff = s_vbat_pending_mv > 0 ? raw_mv - s_vbat_pending_mv : 0;
+    if (pending_diff < 0)
+        pending_diff = -pending_diff;
+    if (s_vbat_pending_mv > 0 && pending_diff < VBAT_CONFIRM_TOLERANCE_MV) {
+        s_vbat_pending_streak++;
+    } else {
+        s_vbat_pending_mv = raw_mv;
+        s_vbat_pending_streak = 1;
+    }
+
+    if (s_vbat_pending_streak >= VBAT_REQUIRED_AGREEMENTS) {
+        s_vbat_last_confirmed_mv = raw_mv;
+        s_vbat_pending_mv = -1;
+        s_vbat_pending_streak = 0;
+        return raw_mv;
+    }
+
+    return s_vbat_last_confirmed_mv;
+}
+
 esp_err_t board_hal_init(void)
 {
     ESP_LOGI(TAG, "Initializing XIAO EE04 Board HAL");
@@ -120,7 +183,7 @@ bool board_hal_is_battery_connected(void)
     return voltage > 2500;  // If we read > 2.5V, a battery is connected
 }
 
-int board_hal_get_battery_voltage(void)
+static int read_vbat_mv_raw(void)
 {
     if (!adc_handle)
         return -1;
@@ -142,6 +205,48 @@ int board_hal_get_battery_voltage(void)
     gpio_set_level(VBAT_ADC_ENABLE_PIN, 0);
 
     return result;
+}
+
+esp_err_t board_hal_battery_prime_reading(void)
+{
+    // Three quick reads, taken before WiFi starts (see main.c), averaged —
+    // the quietest point in the wake cycle.
+    int best = -1;
+    long sum = 0;
+    int n = 0;
+    for (int i = 0; i < 3; i++) {
+        int mv = read_vbat_mv_raw();
+        if (mv <= 0)
+            continue;
+        if (mv > best)
+            best = mv;
+        if (mv >= VBAT_MIN_PLAUSIBLE_MV) {
+            sum += mv;
+            n++;
+        }
+    }
+    int avg_mv = n > 0 ? (int) (sum / n) : best;
+    int mv = confirm_vbat_reading(avg_mv);
+    if (mv <= 0) {
+        return ESP_FAIL;
+    }
+    s_vbat_cached_mv = mv;
+    ESP_LOGI(TAG, "Battery primed: %d mV", mv);
+    return ESP_OK;
+}
+
+int board_hal_get_battery_voltage(void)
+{
+    if (s_vbat_cached_mv > 0) {
+        return s_vbat_cached_mv;
+    }
+    // Priming wasn't called or failed; fall back to a live read (may be
+    // exposed to WiFi-TX sag if this happens mid-pull).
+    int mv = confirm_vbat_reading(read_vbat_mv_raw());
+    if (mv > 0) {
+        s_vbat_cached_mv = mv;
+    }
+    return mv;
 }
 
 int board_hal_get_battery_percent(void)

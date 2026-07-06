@@ -301,6 +301,31 @@ void app_main(void)
     case ESP_RST_BROWNOUT:
         reset_reason_str = "Brownout reset";
         break;
+    case ESP_RST_EXT:
+        reset_reason_str = "External pin reset";
+        break;
+    case ESP_RST_SDIO:
+        reset_reason_str = "SDIO reset";
+        break;
+    case ESP_RST_USB:
+        // Common on S3-family boards while a USB cable is attached to a host
+        // (flashing/debugging): the native USB-Serial-JTAG peripheral resets
+        // the chip instead of a clean deep-sleep wake. Not a fault — expect
+        // "Deep sleep wake" again once the cable is unplugged.
+        reset_reason_str = "USB reset";
+        break;
+    case ESP_RST_JTAG:
+        reset_reason_str = "JTAG reset";
+        break;
+    case ESP_RST_EFUSE:
+        reset_reason_str = "eFuse error reset";
+        break;
+    case ESP_RST_PWR_GLITCH:
+        reset_reason_str = "Power glitch reset";
+        break;
+    case ESP_RST_CPU_LOCKUP:
+        reset_reason_str = "CPU lockup (double exception)";
+        break;
     default:
         reset_reason_str = "Unknown";
         break;
@@ -359,6 +384,14 @@ void app_main(void)
             ESP_LOGW(TAG, "Failed to apply stored battery ADC pin GPIO%d: %s",
                      stored_battery_adc_gpio, esp_err_to_name(batt_adc_ret));
         }
+    }
+
+    // Take a clean battery reading now, before WiFi (started below / in
+    // deep_sleep_wake_main()) sags the rail with TX current. Cached for the
+    // rest of this wake; see board_hal_battery_prime_reading().
+    esp_err_t batt_prime_ret = board_hal_battery_prime_reading();
+    if (batt_prime_ret != ESP_OK && batt_prime_ret != ESP_ERR_NOT_SUPPORTED) {
+        ESP_LOGW(TAG, "Battery priming failed: %s", esp_err_to_name(batt_prime_ret));
     }
 
     // Always restore time from external RTC (internal RTC is inaccurate)

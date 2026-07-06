@@ -170,6 +170,12 @@ RTC_DATA_ATTR static int s_vbat_last_confirmed_mv = -1;
 RTC_DATA_ATTR static int s_vbat_pending_mv = -1;
 RTC_DATA_ATTR static int s_vbat_pending_streak = 0;
 
+// Set once per wake by board_hal_battery_prime_reading() (before WiFi
+// starts) and reused for the rest of the wake; see the EE02 driver for the
+// full rationale. Plain (non-RTC) static: doesn't need to survive deep sleep.
+static int s_vbat_cached_mv = -1;
+#define VBAT_MIN_PLAUSIBLE_MV 3300
+
 // See driver_seeedstudio_xiao_ee02.c's confirm_vbat_reading() for the full
 // rationale — identical logic, duplicated here since each board driver in
 // this codebase owns its own static state rather than sharing it.
@@ -213,9 +219,47 @@ static int confirm_vbat_reading(int raw_mv)
     return s_vbat_last_confirmed_mv;
 }
 
+esp_err_t board_hal_battery_prime_reading(void)
+{
+    // Three quick reads (each already 64x-oversampled by read_vbat_mv_raw()),
+    // taken before WiFi starts (see main.c) and averaged — the quietest
+    // point in the wake cycle.
+    int best = -1;
+    long sum = 0;
+    int n = 0;
+    for (int i = 0; i < 3; i++) {
+        int mv = read_vbat_mv_raw();
+        if (mv <= 0)
+            continue;
+        if (mv > best)
+            best = mv;
+        if (mv >= VBAT_MIN_PLAUSIBLE_MV) {
+            sum += mv;
+            n++;
+        }
+    }
+    int avg_mv = n > 0 ? (int) (sum / n) : best;
+    int mv = confirm_vbat_reading(avg_mv);
+    if (mv <= 0) {
+        return ESP_FAIL;
+    }
+    s_vbat_cached_mv = mv;
+    ESP_LOGI(TAG, "Battery primed: %d mV", mv);
+    return ESP_OK;
+}
+
 int board_hal_get_battery_voltage(void)
 {
-    return confirm_vbat_reading(read_vbat_mv_raw());
+    if (s_vbat_cached_mv > 0) {
+        return s_vbat_cached_mv;
+    }
+    // Priming wasn't called or failed; fall back to a live read (may be
+    // exposed to WiFi-TX sag if this happens mid-pull).
+    int mv = confirm_vbat_reading(read_vbat_mv_raw());
+    if (mv > 0) {
+        s_vbat_cached_mv = mv;
+    }
+    return mv;
 }
 
 bool board_hal_is_battery_connected(void)

@@ -158,6 +158,15 @@ int board_hal_get_battery_voltage(void)
     return axp2101_get_battery_voltage();
 }
 
+esp_err_t board_hal_battery_prime_reading(void)
+{
+    // Not needed here: this board reads battery via the AXP2101 PMIC's own
+    // fuel-gauge/ADC over I2C, not a raw resistor-divider pin sampled by the
+    // ESP32's own ADC — it isn't exposed to the same WiFi-TX rail-sag noise
+    // the pre-WiFi priming was designed to avoid on the other 5 boards.
+    return ESP_ERR_NOT_SUPPORTED;
+}
+
 bool board_hal_is_charging(void)
 {
     return axp2101_is_charging();

@@ -82,6 +82,22 @@ int board_hal_get_battery_percent(void);
 int board_hal_get_battery_voltage(void);
 
 /**
+ * @brief Take a clean battery reading before WiFi radio activity begins.
+ *
+ * Samples the ADC a few times back-to-back and caches the (filtered) result
+ * for the rest of this wake period. board_hal_get_battery_voltage() and
+ * board_hal_get_battery_percent() prefer this cached value once primed,
+ * instead of live-reading mid-WiFi-transmit (which sags the battery rail and
+ * produces bogus low readings). Must be called after board_hal_init() and
+ * board_hal_set_battery_adc_pin() (if applicable), and strictly before any
+ * WiFi activity.
+ *
+ * @return ESP_OK if a usable reading was cached, ESP_ERR_NOT_SUPPORTED if
+ *         this board/config has no battery sensing available.
+ */
+esp_err_t board_hal_battery_prime_reading(void);
+
+/**
  * @brief Check if battery is currently charging
  *
  * @return true if charging, false otherwise
