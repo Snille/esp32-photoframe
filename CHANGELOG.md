@@ -10,6 +10,18 @@ DFRobot FireBeetle) on **ESP-IDF v6.0** from a single `v<version>` tag; each
 release carries every board's flashable factory bin and drives the web flasher.
 (The old manual `firebeetle-v<version>` line is retired.)
 
+## 2.13.0
+
+### Fixed
+- **FireBeetle 2 ESP32-S3 battery voltage read ~3% low**, understating state of
+  charge by up to ~11 points near the top of the LiPo curve (that region is
+  steep — 5% SoC per 30 mV). The board's external, user-wired 1M+1M divider
+  has no factory calibration, and the driver assumed an exact 2:1 ratio
+  (`cal_scale` left at 1.0). Derived a correction from a direct multimeter
+  reading on the cell (4.19 V) against what the driver reported at the same
+  moment (~4.08 V): `VBAT_CAL_SCALE = 1.027`. Board-specific to this
+  particular resistor pair — re-derive if the divider is ever rebuilt.
+
 ## 2.12.0
 
 ### Fixed

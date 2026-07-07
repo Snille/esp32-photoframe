@@ -75,6 +75,17 @@ static const board_hal_battery_adc_pin_t s_battery_adc_pin_options[] = {
 
 #define VBAT_VOLTAGE_DIVIDER 2.0f  // two equal resistors (e.g. 1M + 1M)
 
+// Empirical correction for this board's actual (user-wired, unmatched) 1M+1M
+// pair, which the plain 2.0 divider above assumes is exact. Derived from a
+// direct multimeter reading on PhotoFrame-Mini-02's cell (4.19 V, charger LED
+// off = charge complete) against what this driver reported at the same
+// moment (~4.08 V): 4190/4080 = 1.027. Without it, the reported voltage read
+// ~3% low — small in absolute terms, but the LiPo curve's near-full region is
+// steep enough (5% SoC per 30 mV) that it showed up as an 11-point SoC gap
+// against the frame's own (unrelated) percent reading. Re-derive this if the
+// physical resistors are ever replaced.
+#define VBAT_CAL_SCALE 1.027f
+
 // Lowest believable resting voltage for a running pack; below this the read
 // is likely a transient collapse rather than a genuinely low pack.
 #define VBAT_MIN_PLAUSIBLE_MV 3300
@@ -134,7 +145,7 @@ esp_err_t board_hal_set_battery_adc_pin(int gpio_num)
         .settle_ms = 0,
         .samples = 8,
         .divider = VBAT_VOLTAGE_DIVIDER,
-        .cal_scale = 1.0f,
+        .cal_scale = VBAT_CAL_SCALE,
     };
     esp_err_t ret = battery_adc_create(&vbat_cfg, &s_vbat_adc);
     if (ret != ESP_OK) {
