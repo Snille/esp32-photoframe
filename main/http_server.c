@@ -2400,7 +2400,7 @@ static esp_err_t ota_check_handler(httpd_req_t *req)
 {
     if (req->method == HTTP_POST) {
         bool update_available = false;
-        esp_err_t err = ota_check_for_update(&update_available, 30);
+        esp_err_t err = ota_check_for_update(&update_available, 60);
 
         cJSON *response = cJSON_CreateObject();
         if (err == ESP_OK) {
@@ -2408,7 +2408,10 @@ static esp_err_t ota_check_handler(httpd_req_t *req)
             cJSON_AddStringToObject(response, "status", "success");
         } else {
             cJSON_AddStringToObject(response, "status", "error");
-            cJSON_AddStringToObject(response, "message", "Failed to check for updates");
+            cJSON_AddStringToObject(response, "message",
+                                    err == ESP_ERR_TIMEOUT
+                                        ? "Update check timed out (slow network); try again"
+                                        : "Failed to check for updates");
         }
 
         char *json_str = cJSON_Print(response);

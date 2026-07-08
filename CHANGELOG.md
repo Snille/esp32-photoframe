@@ -10,6 +10,23 @@ DFRobot FireBeetle) on **ESP-IDF v6.0** from a single `v<version>` tag; each
 release carries every board's flashable factory bin and drives the web flasher.
 (The old manual `firebeetle-v<version>` line is retired.)
 
+## 2.14.1
+
+### Fixed
+- **Server-triggered OTA falsely reported "Frame is already on the latest
+  version" on some frames (notably the XIAO EE02), even with an update
+  available.** The frame's update check runs in a background task; if fetching
+  the GitHub releases list over TLS took longer than the check's wait timeout,
+  `ota_check_for_update()` returned success with `update_available=false` —
+  indistinguishable from a genuine up-to-date result — so the server gave up. (The
+  frame's own WebGUI was unaffected, because it polls the check status
+  asynchronously — which is why the update icon still showed.) The check now
+  reports a distinct timeout/error instead of a false "no update", the wait
+  timeout is raised 30 → 60 s, and the releases query fetches fewer entries
+  (`per_page` 30 → 10) so the response is smaller and the check completes in time.
+  Pairs with a server-side retry (photoframe-server) that re-checks a frame whose
+  check times out instead of surfacing the error immediately.
+
 ## 2.14.0
 
 ### Added

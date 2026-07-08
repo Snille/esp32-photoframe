@@ -582,6 +582,19 @@ esp_err_t ota_check_for_update(bool *update_available_out, int timeout)
         *update_available_out = update_available;
     }
 
+    // Report the real outcome, not a blanket ESP_OK. If the wait ran out while
+    // the check task was still running (a large GitHub releases response over
+    // TLS can exceed the timeout on a slow link), the caller must NOT read this
+    // as a successful "no update available" — the server's OTA trigger treats
+    // ESP_OK + update_available=false as "already on the latest version" and
+    // gives up, even though an update exists. Surface timeout/error distinctly
+    // so callers (and the server) can retry or report honestly.
+    if (ota_status.state == OTA_STATE_CHECKING) {
+        return ESP_ERR_TIMEOUT;  // still running: we stopped waiting, not "no update"
+    }
+    if (ota_status.state == OTA_STATE_ERROR) {
+        return ESP_FAIL;
+    }
     return ESP_OK;
 }
 

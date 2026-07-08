@@ -146,8 +146,12 @@ typedef enum {
 // /releases/latest returns whichever was published most recently regardless of
 // board, so a FireBeetle-only release would hide S3 updates. Instead the OTA
 // code walks this list (newest first) and picks the newest release that actually
-// contains this board's binary. per_page=30 covers all current releases.
-#define GITHUB_API_URL "https://api.github.com/repos/Snille/esp32-photoframe/releases?per_page=30"
+// contains this board's binary. per_page=10 keeps the response small (each
+// release now carries 12 assets, so the list is tens of KB over TLS) — the
+// newest release always carries every board's asset, so the board-specific
+// binary is near the top and the check finishes well within its timeout. See
+// ota_check_for_update()'s timeout handling.
+#define GITHUB_API_URL "https://api.github.com/repos/Snille/esp32-photoframe/releases?per_page=10"
 #define OTA_CHECK_INTERVAL_MS (24 * 60 * 60 * 1000)  // 24 hours
 
 #endif
