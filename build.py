@@ -4,6 +4,16 @@ import subprocess
 import sys
 import os
 
+# Always emit UTF-8, regardless of the host console's codepage. Windows defaults
+# to cp1252, which can't encode the status glyphs (✓/✗) printed below and crashes
+# on any non-UTF-8 stdout — e.g. redirected output in CI logs or a background run.
+# UTF-8 is the portable default everywhere else, so normalize to it here.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8")
+    except (AttributeError, ValueError):
+        pass  # not a reconfigurable text stream (already wrapped/detached)
+
 # Add scripts to sys.path to import boards
 sys.path.append(os.path.join(os.path.dirname(__file__), "scripts"))
 from boards import SUPPORTED_BOARDS
