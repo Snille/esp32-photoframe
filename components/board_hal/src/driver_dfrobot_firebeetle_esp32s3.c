@@ -82,9 +82,12 @@ static const board_hal_battery_adc_pin_t s_battery_adc_pin_options[] = {
 // moment (~4.08 V): 4190/4080 = 1.027. Without it, the reported voltage read
 // ~3% low — small in absolute terms, but the LiPo curve's near-full region is
 // steep enough (5% SoC per 30 mV) that it showed up as an 11-point SoC gap
-// against the frame's own (unrelated) percent reading. Re-derive this if the
-// physical resistors are ever replaced.
-#define VBAT_CAL_SCALE 1.027f
+// against the frame's own (unrelated) percent reading. This is only the factory
+// DEFAULT (derived from Mini-02's pair); each unit's own resistor tolerances
+// differ, so a per-unit one-point calibration overrides it at runtime via
+// s_vbat_cal_scale (see board_hal_set_battery_cal_scale). Re-derive this default
+// if the reference board's physical resistors are ever replaced.
+#define VBAT_CAL_SCALE_DEFAULT 1.027f
 
 // Lowest believable resting voltage for a running pack; below this the read
 // is likely a transient collapse rather than a genuinely low pack.
@@ -97,6 +100,17 @@ static int s_vbat_adc_gpio = -1;
 // and reused for the rest of the wake; see the EE02 driver for the full
 // rationale. Plain (non-RTC) static: doesn't need to survive deep sleep.
 static int s_vbat_cached_mv = -1;
+
+// Per-unit voltage calibration scale, applied to every divided reading. Starts
+// at the board factory default; a one-point multimeter calibration overrides it
+// (board_hal_set_battery_cal_scale) and config_manager persists it across boots.
+static float s_vbat_cal_scale = VBAT_CAL_SCALE_DEFAULT;
+
+// Apply the per-unit calibration to a raw (already divider-corrected) reading.
+static int apply_vbat_cal(int mv)
+{
+    return mv > 0 ? (int) ((float) mv * s_vbat_cal_scale + 0.5f) : mv;
+}
 
 // GPIO -> ADC1 channel, for the pins in s_battery_adc_pin_options. ESP32-S3
 // ADC1 channels map 1:1 to GPIO1-10 (channel = gpio - 1).
@@ -145,7 +159,7 @@ esp_err_t board_hal_set_battery_adc_pin(int gpio_num)
         .settle_ms = 0,
         .samples = 8,
         .divider = VBAT_VOLTAGE_DIVIDER,
-        .cal_scale = VBAT_CAL_SCALE,
+        .cal_scale = 1.0f,  // per-unit correction applied in-driver via s_vbat_cal_scale
     };
     esp_err_t ret = battery_adc_create(&vbat_cfg, &s_vbat_adc);
     if (ret != ESP_OK) {
@@ -161,6 +175,33 @@ esp_err_t board_hal_set_battery_adc_pin(int gpio_num)
 int board_hal_get_battery_adc_pin(void)
 {
     return s_vbat_adc_gpio;
+}
+
+bool board_hal_supports_battery_cal(void)
+{
+    return true;
+}
+
+float board_hal_get_battery_cal_scale(void)
+{
+    return s_vbat_cal_scale;
+}
+
+esp_err_t board_hal_set_battery_cal_scale(float scale)
+{
+    if (scale <= 0.0f) {
+        s_vbat_cal_scale = VBAT_CAL_SCALE_DEFAULT;  // reset to factory default
+        s_vbat_cached_mv = -1;                      // force a fresh, corrected read
+        ESP_LOGI(TAG, "Battery cal scale reset to default %.4f", s_vbat_cal_scale);
+        return ESP_OK;
+    }
+    if (scale < BOARD_HAL_BATTERY_CAL_SCALE_MIN || scale > BOARD_HAL_BATTERY_CAL_SCALE_MAX) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    s_vbat_cal_scale = scale;
+    s_vbat_cached_mv = -1;
+    ESP_LOGI(TAG, "Battery cal scale set to %.4f", scale);
+    return ESP_OK;
 }
 
 // Cross-wake confirmation to filter WiFi-TX-induced ADC sag: the same fix
@@ -225,7 +266,8 @@ esp_err_t board_hal_battery_prime_reading(void)
     }
     // Three quick reads, taken before WiFi starts (see main.c), averaged by
     // the shared helper — the quietest point in the wake cycle.
-    int mv = confirm_vbat_reading(battery_adc_read_mv_multi(s_vbat_adc, 3, VBAT_MIN_PLAUSIBLE_MV));
+    int mv = confirm_vbat_reading(
+        apply_vbat_cal(battery_adc_read_mv_multi(s_vbat_adc, 3, VBAT_MIN_PLAUSIBLE_MV)));
     if (mv <= 0) {
         return ESP_FAIL;
     }
@@ -243,7 +285,7 @@ int board_hal_get_battery_voltage(void)
         return -1;
     // Priming wasn't called or failed; fall back to a live read (may be
     // exposed to WiFi-TX sag if this happens mid-pull).
-    int mv = confirm_vbat_reading(battery_adc_read_mv(s_vbat_adc));
+    int mv = confirm_vbat_reading(apply_vbat_cal(battery_adc_read_mv(s_vbat_adc)));
     if (mv > 0) {
         s_vbat_cached_mv = mv;
     }

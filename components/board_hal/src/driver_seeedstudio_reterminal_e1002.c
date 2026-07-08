@@ -50,6 +50,12 @@ RTC_DATA_ATTR static int s_vbat_pending_streak = 0;
 // doesn't need to survive deep sleep.
 static int s_vbat_cached_mv = -1;
 
+// Per-unit voltage calibration scale (see board_hal_set_battery_cal_scale).
+// 1.0 = no correction; a one-point multimeter calibration overrides it at
+// runtime and config_manager persists it across boots.
+#define VBAT_CAL_SCALE_DEFAULT 1.0f
+static float s_vbat_cal_scale = VBAT_CAL_SCALE_DEFAULT;
+
 static int confirm_vbat_reading(int raw_mv)
 {
     if (raw_mv <= 0) {
@@ -317,7 +323,7 @@ static int read_vbat_mv_raw(void)
         // Note: ADC_ATTEN_DB_12 covers up to ~3.1-3.3V depending on cal.
         // Approx: 0.8 mV per LSB * divider.
         float voltage_mv = (float) adc_raw * (3300.0f / 4095.0f) * VBAT_VOLTAGE_DIVIDER;
-        return (int) voltage_mv;
+        return (int) (voltage_mv * s_vbat_cal_scale);
     }
     return -1;
 }
@@ -423,6 +429,33 @@ esp_err_t board_hal_set_battery_adc_pin(int gpio_num)
 int board_hal_get_battery_adc_pin(void)
 {
     return -1;
+}
+
+bool board_hal_supports_battery_cal(void)
+{
+    return true;
+}
+
+float board_hal_get_battery_cal_scale(void)
+{
+    return s_vbat_cal_scale;
+}
+
+esp_err_t board_hal_set_battery_cal_scale(float scale)
+{
+    if (scale <= 0.0f) {
+        s_vbat_cal_scale = VBAT_CAL_SCALE_DEFAULT;  // reset to factory default
+        s_vbat_cached_mv = -1;                      // force a fresh, corrected read
+        ESP_LOGI(TAG, "Battery cal scale reset to default %.4f", s_vbat_cal_scale);
+        return ESP_OK;
+    }
+    if (scale < BOARD_HAL_BATTERY_CAL_SCALE_MIN || scale > BOARD_HAL_BATTERY_CAL_SCALE_MAX) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    s_vbat_cal_scale = scale;
+    s_vbat_cached_mv = -1;
+    ESP_LOGI(TAG, "Battery cal scale set to %.4f", scale);
+    return ESP_OK;
 }
 
 bool board_hal_is_usb_connected(void)

@@ -231,6 +231,55 @@ esp_err_t board_hal_set_battery_adc_pin(int gpio_num);
  */
 int board_hal_get_battery_adc_pin(void);
 
+// --- Per-unit battery voltage calibration ---
+//
+// Each frame reads its cell through a resistor divider whose real ratio drifts
+// from nominal by the resistors' tolerance (typ. +/-1% each), and some boards
+// bake in a fixed board-level correction on top. That error is small in
+// millivolts but lands on the steep near-full part of the LiPo curve (~5% SoC
+// per 30 mV), so it shows up as a frame that "never reads 100%" or a skewed
+// state-of-charge. A one-point calibration corrects it: measure the resting
+// cell with a multimeter and scale every reading so the reported voltage
+// matches. The scale is a multiplicative factor on the divided voltage;
+// 1.0 = no correction beyond the board's factory default.
+#define BOARD_HAL_BATTERY_CAL_SCALE_MIN 0.80f
+#define BOARD_HAL_BATTERY_CAL_SCALE_MAX 1.25f
+
+/**
+ * @brief Whether this board reads the battery through an ADC divider that a
+ * per-unit voltage calibration can correct.
+ *
+ * False on boards that read the pack via a PMIC fuel gauge (nothing to scale) --
+ * callers should hide the calibration UI and skip applying a stored scale.
+ */
+bool board_hal_supports_battery_cal(void);
+
+/**
+ * @brief Current effective battery voltage calibration scale.
+ *
+ * The factory default (which may itself be a board-specific correction, e.g.
+ * 1.027 on the FireBeetle 2 ESP32-S3) until a per-unit calibration is applied.
+ * Returns 1.0 on boards that don't support calibration.
+ */
+float board_hal_get_battery_cal_scale(void);
+
+/**
+ * @brief Set the effective battery voltage calibration scale.
+ *
+ * Multiplies every subsequent battery-voltage reading by @p scale. For a
+ * one-point multimeter calibration the caller computes
+ * scale_new = board_hal_get_battery_cal_scale() * V_measured / V_reported.
+ * Applied live for the rest of this wake; does NOT persist -- callers should
+ * also save it (e.g. via config_manager) and re-apply at boot, like the ADC
+ * pin. A @p scale <= 0 resets to the board's factory default.
+ *
+ * @param scale Multiplicative correction, or <=0 to reset to factory default.
+ * @return ESP_OK on success, ESP_ERR_INVALID_ARG if scale is outside
+ *         [BOARD_HAL_BATTERY_CAL_SCALE_MIN, MAX], ESP_ERR_NOT_SUPPORTED on a
+ *         board with no ADC divider to correct.
+ */
+esp_err_t board_hal_set_battery_cal_scale(float scale);
+
 #ifdef __cplusplus
 }
 #endif

@@ -10,6 +10,27 @@ DFRobot FireBeetle) on **ESP-IDF v6.0** from a single `v<version>` tag; each
 release carries every board's flashable factory bin and drives the web flasher.
 (The old manual `firebeetle-v<version>` line is retired.)
 
+## 2.14.0
+
+### Added
+- **Per-unit battery voltage calibration, set from each frame's own WebGUI.** The
+  v2.13.0 `VBAT_CAL_SCALE = 1.027` fix was derived from one specific board's
+  resistor pair, so it was wrong for every other unit — each user-wired 1M+1M
+  divider has its own tolerance, so the rest still never reached 100% and gave a
+  skewed state-of-charge / over-conservative days-remaining estimate. That
+  hardcoded per-board constant is now only a **factory default**; a one-point
+  calibration overrides it per unit: measure the resting cell with a multimeter,
+  enter it under **Settings → Power → "Battery Voltage Calibration"**, and the
+  frame scales every reading to match. Persisted in NVS, re-applied at every boot,
+  and reflected live (no reboot). Works on all five ADC-divider boards (FireBeetle
+  2 ESP32-S3/ESP32-E, XIAO EE02/EE04, reTerminal E1002); the AXP2101-PMIC board
+  (Waveshare) reads via its fuel gauge and correctly reports that no calibration
+  is needed.
+  - New HAL API `board_hal_supports/get/set_battery_cal_scale()` (accepted scale
+    clamped to 0.80–1.25); NVS key `batt_cal`; endpoint
+    `POST /api/battery/calibrate` (`{"measured_mv": <mV>}`, or `0` to reset to the
+    board's factory default).
+
 ## 2.13.0
 
 ### Fixed

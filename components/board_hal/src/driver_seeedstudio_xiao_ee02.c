@@ -20,11 +20,13 @@ static const char *TAG = "board_hal_ee02";
 #define VBAT_ADC_ENABLE_PIN GPIO_NUM_6  // TPS22916 load switch enable
 #define VBAT_VOLTAGE_DIVIDER 2.0f
 
-// Optional per-unit correction for resistor-divider tolerance, measured with a
-// multimeter (1.0 = none). Override at build time if a board reads consistently
-// high/low.
-#ifndef VBAT_CAL_SCALE
-#define VBAT_CAL_SCALE 1.0f
+// Factory DEFAULT per-unit correction for resistor-divider tolerance (1.0 =
+// none). Each unit's own tolerance differs, so a one-point multimeter
+// calibration overrides this at runtime via s_vbat_cal_scale (see
+// board_hal_set_battery_cal_scale); override the default at build time only if a
+// whole board revision reads consistently high/low.
+#ifndef VBAT_CAL_SCALE_DEFAULT
+#define VBAT_CAL_SCALE_DEFAULT 1.0f
 #endif
 
 // USB / charge sensing is NOT possible on this board (rev V1.0): VBUS is not
@@ -95,7 +97,7 @@ esp_err_t board_hal_init(void)
         .settle_ms = 10,
         .samples = 8,
         .divider = VBAT_VOLTAGE_DIVIDER,
-        .cal_scale = VBAT_CAL_SCALE,
+        .cal_scale = 1.0f,  // per-unit correction applied in-driver via s_vbat_cal_scale
     };
     esp_err_t ret = battery_adc_create(&vbat_cfg, &vbat_adc);
     if (ret != ESP_OK) {
@@ -151,6 +153,17 @@ bool board_hal_is_battery_connected(void)
 // needs to survive within one awake period, not across deep sleep.
 static int s_vbat_cached_mv = -1;
 
+// Per-unit voltage calibration scale, applied to every divided reading. Starts
+// at the board factory default; a one-point multimeter calibration overrides it
+// (board_hal_set_battery_cal_scale) and config_manager persists it across boots.
+static float s_vbat_cal_scale = VBAT_CAL_SCALE_DEFAULT;
+
+// Apply the per-unit calibration to a raw (already divider-corrected) reading.
+static int apply_vbat_cal(int mv)
+{
+    return mv > 0 ? (int) ((float) mv * s_vbat_cal_scale + 0.5f) : mv;
+}
+
 // Read the pack voltage, rejecting transient collapses. The rail only ever sags
 // DOWN under load, so we sample a few times and keep the plausible reads: up to
 // 3 reads >= VBAT_MIN_PLAUSIBLE_MV are averaged; if none qualify (genuinely low
@@ -160,7 +173,7 @@ static int read_vbat_mv_robust(void)
 {
     // The helper toggles the TPS22916 load switch, averages several samples
     // per acquisition and applies eFuse calibration + the divider.
-    return battery_adc_read_mv_multi(vbat_adc, 5, VBAT_MIN_PLAUSIBLE_MV);
+    return apply_vbat_cal(battery_adc_read_mv_multi(vbat_adc, 5, VBAT_MIN_PLAUSIBLE_MV));
 }
 
 // A single-wake drop bigger than this (mV) vs. the last CONFIRMED reading is
@@ -256,7 +269,8 @@ esp_err_t board_hal_battery_prime_reading(void)
     // Three quick reads, taken before WiFi starts (see main.c), averaged by
     // the shared helper — the quietest point in the wake cycle, so this
     // should never see a WiFi-TX sag in the first place.
-    int mv = confirm_vbat_reading(battery_adc_read_mv_multi(vbat_adc, 3, VBAT_MIN_PLAUSIBLE_MV));
+    int mv = confirm_vbat_reading(
+        apply_vbat_cal(battery_adc_read_mv_multi(vbat_adc, 3, VBAT_MIN_PLAUSIBLE_MV)));
     if (mv <= 0) {
         return ESP_FAIL;
     }
@@ -332,6 +346,33 @@ esp_err_t board_hal_set_battery_adc_pin(int gpio_num)
 int board_hal_get_battery_adc_pin(void)
 {
     return -1;
+}
+
+bool board_hal_supports_battery_cal(void)
+{
+    return true;
+}
+
+float board_hal_get_battery_cal_scale(void)
+{
+    return s_vbat_cal_scale;
+}
+
+esp_err_t board_hal_set_battery_cal_scale(float scale)
+{
+    if (scale <= 0.0f) {
+        s_vbat_cal_scale = VBAT_CAL_SCALE_DEFAULT;  // reset to factory default
+        s_vbat_cached_mv = -1;                      // force a fresh, corrected read
+        ESP_LOGI(TAG, "Battery cal scale reset to default %.4f", s_vbat_cal_scale);
+        return ESP_OK;
+    }
+    if (scale < BOARD_HAL_BATTERY_CAL_SCALE_MIN || scale > BOARD_HAL_BATTERY_CAL_SCALE_MAX) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    s_vbat_cal_scale = scale;
+    s_vbat_cached_mv = -1;
+    ESP_LOGI(TAG, "Battery cal scale set to %.4f", scale);
+    return ESP_OK;
 }
 
 bool board_hal_is_usb_connected(void)

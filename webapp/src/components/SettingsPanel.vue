@@ -122,8 +122,104 @@ async function syncTime() {
   }
 }
 
+// --- Battery voltage calibration (one-point multimeter) ---
+// Applies to any board that reads the pack through an ADC divider; the frame
+// scales every reading so its reported voltage matches a value measured with a
+// multimeter on the resting cell. Data comes straight from /api/battery so this
+// widget is independent of the batched config save.
+const batteryCal = ref({ supportsCal: false, calScale: 1, voltageMv: null, level: null });
+const measuredVoltage = ref("");
+const calibrating = ref(false);
+const calMessage = ref("");
+const calError = ref(false);
+
+async function fetchBatteryStatus() {
+  try {
+    const res = await fetch("/api/battery");
+    if (!res.ok) return;
+    const b = await res.json();
+    batteryCal.value = {
+      supportsCal: !!b.supports_cal,
+      calScale: b.cal_scale ?? 1,
+      voltageMv: b.battery_voltage,
+      level: b.battery_level,
+    };
+  } catch (error) {
+    console.error("Failed to fetch battery status:", error);
+  }
+}
+
+function applyCalResult(r) {
+  batteryCal.value.calScale = r.cal_scale;
+  batteryCal.value.voltageMv = r.voltage_mv;
+  batteryCal.value.level = r.battery_level;
+}
+
+async function calibrateBattery() {
+  const volts = parseFloat(measuredVoltage.value);
+  if (!(volts > 0)) {
+    calError.value = true;
+    calMessage.value = "Enter the measured cell voltage in volts (e.g. 4.19)";
+    setTimeout(() => (calError.value = false), 5000);
+    return;
+  }
+  calibrating.value = true;
+  calMessage.value = "";
+  try {
+    const res = await fetch("/api/battery/calibrate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ measured_mv: Math.round(volts * 1000) }),
+    });
+    if (res.ok) {
+      const r = await res.json();
+      applyCalResult(r);
+      measuredVoltage.value = "";
+      calError.value = false;
+      calMessage.value = `Calibrated — now reads ${(r.voltage_mv / 1000).toFixed(2)} V (${
+        r.battery_level
+      }%), scale ${Number(r.cal_scale).toFixed(3)}`;
+      setTimeout(() => (calMessage.value = ""), 6000);
+    } else {
+      calError.value = true;
+      calMessage.value = (await res.text()) || "Calibration failed";
+      setTimeout(() => (calError.value = false), 8000);
+    }
+  } catch (error) {
+    console.error("Battery calibration failed:", error);
+    calError.value = true;
+    calMessage.value = "Calibration request failed";
+    setTimeout(() => (calError.value = false), 8000);
+  } finally {
+    calibrating.value = false;
+  }
+}
+
+async function resetBatteryCalibration() {
+  calibrating.value = true;
+  calMessage.value = "";
+  try {
+    const res = await fetch("/api/battery/calibrate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ measured_mv: 0 }),
+    });
+    if (res.ok) {
+      applyCalResult(await res.json());
+      calError.value = false;
+      calMessage.value = "Reset to factory calibration";
+      setTimeout(() => (calMessage.value = ""), 5000);
+    }
+  } catch (error) {
+    console.error("Battery calibration reset failed:", error);
+  } finally {
+    calibrating.value = false;
+  }
+}
+
 onMounted(() => {
   fetchDeviceTime();
+  fetchBatteryStatus();
   // Tick every second to update display
   tickInterval = setInterval(updateDisplayTime, 1000);
 });
@@ -785,6 +881,60 @@ async function enterFlashMode() {
                 variant="outlined"
                 density="compact"
               />
+            </template>
+
+            <template v-if="batteryCal.supportsCal">
+              <v-divider class="my-4" />
+
+              <div class="text-subtitle-1 mb-1">Battery Voltage Calibration</div>
+              <div class="text-caption text-medium-emphasis mb-3">
+                Fine-tune this frame's reported battery voltage to its true value. Measure the
+                resting cell with a multimeter, enter it below, and the frame scales every reading
+                to match — fixing a battery that never reaches 100% or reports a skewed level.
+              </div>
+              <div class="text-body-2 mb-2">
+                Currently reports:
+                <strong>{{
+                  batteryCal.voltageMv != null
+                    ? (batteryCal.voltageMv / 1000).toFixed(2) + " V"
+                    : "—"
+                }}</strong>
+                <span v-if="batteryCal.level != null"> ({{ batteryCal.level }}%)</span>
+                · scale {{ Number(batteryCal.calScale).toFixed(3) }}
+              </div>
+              <div class="d-flex align-center flex-wrap" style="gap: 8px">
+                <v-text-field
+                  v-model="measuredVoltage"
+                  label="Measured voltage (V)"
+                  placeholder="4.19"
+                  type="number"
+                  step="0.01"
+                  variant="outlined"
+                  density="compact"
+                  hide-details
+                  style="max-width: 200px"
+                />
+                <v-btn
+                  color="primary"
+                  :loading="calibrating"
+                  :disabled="calibrating"
+                  @click="calibrateBattery"
+                >
+                  Calibrate
+                </v-btn>
+                <v-btn variant="text" :disabled="calibrating" @click="resetBatteryCalibration">
+                  Reset
+                </v-btn>
+              </div>
+              <v-alert
+                v-if="calMessage"
+                :type="calError ? 'error' : 'success'"
+                variant="tonal"
+                density="compact"
+                class="mt-2"
+              >
+                {{ calMessage }}
+              </v-alert>
             </template>
 
             <v-divider class="my-4" />

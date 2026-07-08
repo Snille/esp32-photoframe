@@ -1385,6 +1385,12 @@ cJSON *create_battery_json(void)
     cJSON_AddBoolToObject(json, "usb_connected", usb_connected);
     cJSON_AddBoolToObject(json, "battery_connected", battery_connected);
 
+    // Per-unit voltage calibration (for the WebGUI's one-point calibration UI).
+    cJSON_AddBoolToObject(json, "supports_cal", board_hal_supports_battery_cal());
+    if (board_hal_supports_battery_cal()) {
+        cJSON_AddNumberToObject(json, "cal_scale", board_hal_get_battery_cal_scale());
+    }
+
     return json;
 }
 

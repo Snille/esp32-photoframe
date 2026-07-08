@@ -109,6 +109,11 @@ typedef enum {
 // with no built-in battery ADC (see board_hal_get_battery_adc_pin_options()).
 // -1 = not configured.
 #define NVS_BATTERY_ADC_GPIO_KEY "batt_adc_gpio"
+// Per-unit battery voltage calibration scale (i32, in ten-thousandths, e.g.
+// 10270 = 1.0270), from a one-point multimeter calibration on the frame's own
+// WebGUI. Absent = use the board driver's factory default. See
+// board_hal_set_battery_cal_scale().
+#define NVS_BATTERY_CAL_SCALE_KEY "batt_cal"
 
 // Button gestures → actions (configurable from the WebUI). Action ids:
 // "none", "next_image", "sleep", "toggle_deep_sleep", "info_screen".

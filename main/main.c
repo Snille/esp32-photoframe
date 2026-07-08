@@ -386,6 +386,18 @@ void app_main(void)
         }
     }
 
+    // Re-apply a previously stored per-unit battery voltage calibration (no-op on
+    // boards without an ADC divider). Runs after the ADC pin is configured and
+    // before priming, so the first cached reading is already corrected.
+    float stored_battery_cal = config_manager_get_battery_cal_scale();
+    if (stored_battery_cal > 0.0f) {
+        esp_err_t batt_cal_ret = board_hal_set_battery_cal_scale(stored_battery_cal);
+        if (batt_cal_ret != ESP_OK && batt_cal_ret != ESP_ERR_NOT_SUPPORTED) {
+            ESP_LOGW(TAG, "Failed to apply stored battery cal scale %.4f: %s", stored_battery_cal,
+                     esp_err_to_name(batt_cal_ret));
+        }
+    }
+
     // Take a clean battery reading now, before WiFi (started below / in
     // deep_sleep_wake_main()) sags the rail with TX current. Cached for the
     // rest of this wake; see board_hal_battery_prime_reading().

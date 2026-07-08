@@ -131,6 +131,12 @@ bool config_manager_get_deep_sleep_enabled(void);
 void config_manager_set_battery_adc_gpio(int gpio_num);
 int config_manager_get_battery_adc_gpio(void);
 
+// Per-unit battery voltage calibration scale (see board_hal_set_battery_cal_scale).
+// A value <= 0 clears any stored calibration so the board driver falls back to
+// its factory default. The getter returns < 0 when unset.
+void config_manager_set_battery_cal_scale(float scale);
+float config_manager_get_battery_cal_scale(void);
+
 // ============================================================================
 // Button gestures → actions
 // ============================================================================

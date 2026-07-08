@@ -84,6 +84,12 @@ static adc_oneshot_unit_handle_t bat_adc_handle = NULL;
 static adc_cali_handle_t bat_cali_handle = NULL;
 static bool bat_calibrated = false;
 
+// Per-unit voltage calibration scale (see board_hal_set_battery_cal_scale).
+// 1.0 = no correction; a one-point multimeter calibration overrides it at
+// runtime and config_manager persists it across boots.
+#define VBAT_CAL_SCALE_DEFAULT 1.0f
+static float s_vbat_cal_scale = VBAT_CAL_SCALE_DEFAULT;
+
 static void board_hal_battery_adc_init(void)
 {
     if (bat_adc_handle)
@@ -144,10 +150,10 @@ static int read_vbat_mv_raw(void)
 
     int mv;
     if (bat_calibrated && adc_cali_raw_to_voltage(bat_cali_handle, avg_raw, &mv) == ESP_OK) {
-        return (int) (mv * VBAT_DIVIDER);
+        return (int) ((float) mv * VBAT_DIVIDER * s_vbat_cal_scale);
     }
     // Fallback: linear scaling (12-bit, ~3.3V full-scale at this attenuation)
-    return (int) ((float) avg_raw * (3300.0f / 4095.0f) * VBAT_DIVIDER);
+    return (int) ((float) avg_raw * (3300.0f / 4095.0f) * VBAT_DIVIDER * s_vbat_cal_scale);
 }
 
 // A single-wake drop bigger than this (mV) vs. the last CONFIRMED reading is
@@ -325,6 +331,33 @@ esp_err_t board_hal_set_battery_adc_pin(int gpio_num)
 {
     (void) gpio_num;
     return ESP_ERR_NOT_SUPPORTED;
+}
+
+bool board_hal_supports_battery_cal(void)
+{
+    return true;
+}
+
+float board_hal_get_battery_cal_scale(void)
+{
+    return s_vbat_cal_scale;
+}
+
+esp_err_t board_hal_set_battery_cal_scale(float scale)
+{
+    if (scale <= 0.0f) {
+        s_vbat_cal_scale = VBAT_CAL_SCALE_DEFAULT;  // reset to factory default
+        s_vbat_cached_mv = -1;                      // force a fresh, corrected read
+        ESP_LOGI(TAG, "Battery cal scale reset to default %.4f", s_vbat_cal_scale);
+        return ESP_OK;
+    }
+    if (scale < BOARD_HAL_BATTERY_CAL_SCALE_MIN || scale > BOARD_HAL_BATTERY_CAL_SCALE_MAX) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    s_vbat_cal_scale = scale;
+    s_vbat_cached_mv = -1;
+    ESP_LOGI(TAG, "Battery cal scale set to %.4f", scale);
+    return ESP_OK;
 }
 
 int board_hal_get_battery_adc_pin(void)

@@ -1408,6 +1408,91 @@ static esp_err_t battery_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+// One-point battery voltage calibration. Body: {"measured_mv": <int>}. The
+// firmware scales every reading so its reported voltage matches the multimeter
+// value the user just measured on the resting cell. measured_mv <= 0 resets to
+// the board's factory default. The new scale is persisted (config_manager) and
+// re-applied at every boot, like the ADC pin.
+static esp_err_t battery_calibrate_handler(httpd_req_t *req)
+{
+    if (!system_ready) {
+        httpd_resp_set_status(req, HTTPD_503);
+        httpd_resp_sendstr(req, "System is still initializing");
+        return ESP_FAIL;
+    }
+    if (!board_hal_supports_battery_cal()) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                            "This board has no battery ADC to calibrate");
+        return ESP_FAIL;
+    }
+
+    char buf[128];
+    int ret = httpd_req_recv(req, buf, sizeof(buf) - 1);
+    if (ret <= 0) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "No data received");
+        return ESP_FAIL;
+    }
+    buf[ret] = '\0';
+
+    cJSON *root = cJSON_Parse(buf);
+    if (!root) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
+    }
+    cJSON *measured = cJSON_GetObjectItem(root, "measured_mv");
+    if (!measured || !cJSON_IsNumber(measured)) {
+        cJSON_Delete(root);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing measured_mv");
+        return ESP_FAIL;
+    }
+    int measured_mv = measured->valueint;
+    cJSON_Delete(root);
+
+    if (measured_mv <= 0) {
+        // Reset to the board's factory default.
+        board_hal_set_battery_cal_scale(0.0f);
+        config_manager_set_battery_cal_scale(-1.0f);
+    } else {
+        int reported_mv = board_hal_get_battery_voltage();
+        if (reported_mv <= 0) {
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                                "No battery reading available to calibrate against");
+            return ESP_FAIL;
+        }
+        // New scale so the reported voltage matches the measured one, relative to
+        // the scale currently in effect.
+        float new_scale =
+            board_hal_get_battery_cal_scale() * (float) measured_mv / (float) reported_mv;
+        esp_err_t cal_ret = board_hal_set_battery_cal_scale(new_scale);
+        if (cal_ret == ESP_ERR_INVALID_ARG) {
+            char msg[160];
+            snprintf(msg, sizeof(msg),
+                     "Calibration factor %.3f is out of range (%.2f-%.2f) - double-check the "
+                     "measured voltage (in mV)",
+                     new_scale, BOARD_HAL_BATTERY_CAL_SCALE_MIN, BOARD_HAL_BATTERY_CAL_SCALE_MAX);
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, msg);
+            return ESP_FAIL;
+        } else if (cal_ret != ESP_OK) {
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                                "Calibration not supported on this board");
+            return ESP_FAIL;
+        }
+        config_manager_set_battery_cal_scale(board_hal_get_battery_cal_scale());
+    }
+
+    // Respond with the new scale + a fresh, corrected reading.
+    cJSON *resp = cJSON_CreateObject();
+    cJSON_AddNumberToObject(resp, "cal_scale", board_hal_get_battery_cal_scale());
+    cJSON_AddNumberToObject(resp, "voltage_mv", board_hal_get_battery_voltage());
+    cJSON_AddNumberToObject(resp, "battery_level", board_hal_get_battery_percent());
+    char *resp_str = cJSON_Print(resp);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, resp_str);
+    free(resp_str);
+    cJSON_Delete(resp);
+    return ESP_OK;
+}
+
 static esp_err_t sensor_handler(httpd_req_t *req)
 {
     if (!system_ready) {
@@ -1796,6 +1881,11 @@ static esp_err_t config_handler(httpd_req_t *req)
             cJSON_AddStringToObject(opt, "label", adc_pin_options[i].label);
             cJSON_AddItemToArray(battery_adc_options, opt);
         }
+
+        // Per-unit battery voltage calibration: the WebGUI shows a one-point
+        // multimeter calibration control when the board reads via an ADC divider.
+        cJSON_AddBoolToObject(root, "battery_supports_cal", board_hal_supports_battery_cal());
+        cJSON_AddNumberToObject(root, "battery_cal_scale", board_hal_get_battery_cal_scale());
 
         // Button gestures → actions
         cJSON_AddStringToObject(root, "button_action_short",
@@ -2830,6 +2920,12 @@ esp_err_t http_server_init(void)
                                    .handler = battery_handler,
                                    .user_ctx = NULL};
         httpd_register_uri_handler(server, &battery_uri);
+
+        httpd_uri_t battery_calibrate_uri = {.uri = "/api/battery/calibrate",
+                                             .method = HTTP_POST,
+                                             .handler = battery_calibrate_handler,
+                                             .user_ctx = NULL};
+        httpd_register_uri_handler(server, &battery_calibrate_uri);
 
         httpd_uri_t sensor_uri = {
             .uri = "/api/sensor", .method = HTTP_GET, .handler = sensor_handler, .user_ctx = NULL};

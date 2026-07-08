@@ -167,6 +167,23 @@ esp_err_t board_hal_battery_prime_reading(void)
     return ESP_ERR_NOT_SUPPORTED;
 }
 
+bool board_hal_supports_battery_cal(void)
+{
+    // Reads via the AXP2101 PMIC fuel gauge — no resistor divider to correct.
+    return false;
+}
+
+float board_hal_get_battery_cal_scale(void)
+{
+    return 1.0f;
+}
+
+esp_err_t board_hal_set_battery_cal_scale(float scale)
+{
+    (void) scale;
+    return ESP_ERR_NOT_SUPPORTED;
+}
+
 bool board_hal_is_charging(void)
 {
     return axp2101_is_charging();

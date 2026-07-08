@@ -54,8 +54,9 @@ static char google_api_key[AI_API_KEY_MAX_LEN] = {0};
 static char ai_prompt[AI_PROMPT_MAX_LEN] = {0};
 
 // Power
-static bool deep_sleep_enabled = true;  // Enabled by default
-static int battery_adc_gpio = -1;       // -1 = no external divider configured
+static bool deep_sleep_enabled = true;   // Enabled by default
+static int battery_adc_gpio = -1;        // -1 = no external divider configured
+static float battery_cal_scale = -1.0f;  // <0 = unset (board driver's factory default)
 
 // Button gestures → actions
 static char btn_action_short[BUTTON_ACTION_MAX_LEN] = DEFAULT_BTN_SHORT_ACTION;
@@ -305,6 +306,13 @@ esp_err_t config_manager_init(void)
         if (nvs_get_i32(nvs_handle, NVS_BATTERY_ADC_GPIO_KEY, &stored_battery_adc_gpio) == ESP_OK) {
             battery_adc_gpio = stored_battery_adc_gpio;
             ESP_LOGI(TAG, "Loaded battery ADC pin from NVS: GPIO%d", battery_adc_gpio);
+        }
+
+        int32_t stored_battery_cal = 0;
+        if (nvs_get_i32(nvs_handle, NVS_BATTERY_CAL_SCALE_KEY, &stored_battery_cal) == ESP_OK &&
+            stored_battery_cal > 0) {
+            battery_cal_scale = (float) stored_battery_cal / 10000.0f;
+            ESP_LOGI(TAG, "Loaded battery cal scale from NVS: %.4f", battery_cal_scale);
         }
 
         // Button gestures → actions (fall back to compiled defaults if unset)
@@ -1054,6 +1062,35 @@ void config_manager_set_battery_adc_gpio(int gpio_num)
 int config_manager_get_battery_adc_gpio(void)
 {
     return battery_adc_gpio;
+}
+
+void config_manager_set_battery_cal_scale(float scale)
+{
+    nvs_handle_t nvs_handle;
+    if (scale <= 0.0f) {
+        // Reset: forget any stored calibration so the board driver falls back to
+        // its factory default (both live and at next boot).
+        battery_cal_scale = -1.0f;
+        if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+            nvs_erase_key(nvs_handle, NVS_BATTERY_CAL_SCALE_KEY);
+            nvs_commit(nvs_handle);
+            nvs_close(nvs_handle);
+        }
+        ESP_LOGI(TAG, "Battery cal scale reset to factory default");
+        return;
+    }
+    battery_cal_scale = scale;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_i32(nvs_handle, NVS_BATTERY_CAL_SCALE_KEY, (int32_t) (scale * 10000.0f + 0.5f));
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+    ESP_LOGI(TAG, "Battery cal scale set to %.4f", scale);
+}
+
+float config_manager_get_battery_cal_scale(void)
+{
+    return battery_cal_scale;
 }
 
 // --- Button gestures → actions ---
