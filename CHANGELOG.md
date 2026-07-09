@@ -10,6 +10,13 @@ DFRobot FireBeetle) on **ESP-IDF v6.0** from a single `v<version>` tag; each
 release carries every board's flashable factory bin and drives the web flasher.
 (The old manual `firebeetle-v<version>` line is retired.)
 
+## 2.15.1
+
+### Changed
+- Patch release used to validate the v2.15.0 server-controlled auto-update
+  self-install path end-to-end on real hardware (a newer release the canary
+  frame can pick up on its own). No functional firmware change from v2.15.0.
+
 ## 2.15.0
 
 ### Added
