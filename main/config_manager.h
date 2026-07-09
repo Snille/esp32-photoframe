@@ -107,6 +107,21 @@ void config_manager_set_ha_url(const char *url);
 const char *config_manager_get_ha_url(void);
 
 // ============================================================================
+// OTA Auto-Update (server-owned, pushed via config-sync)
+// ============================================================================
+
+// When enabled, the periodic OTA check also auto-installs a found update,
+// gated by battery level. Default off (each frame is a manual canary until the
+// server turns this on).
+void config_manager_set_auto_update(bool enabled);
+bool config_manager_get_auto_update(void);
+
+// Minimum battery percent required to auto-install (unless charging). Clamped
+// 10-90. Default DEFAULT_AUTO_UPDATE_BATTERY_MIN.
+void config_manager_set_auto_update_battery_min(int percent);
+int config_manager_get_auto_update_battery_min(void);
+
+// ============================================================================
 // AI API Keys
 // ============================================================================
 

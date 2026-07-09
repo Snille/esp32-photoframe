@@ -1868,6 +1868,12 @@ static esp_err_t config_handler(httpd_req_t *req)
         // Other
         cJSON_AddBoolToObject(root, "deep_sleep_enabled", config_manager_get_deep_sleep_enabled());
 
+        // OTA auto-update (server-owned; mirrored here so the WebGUI + server can
+        // see the frame's current state).
+        cJSON_AddBoolToObject(root, "auto_update", config_manager_get_auto_update());
+        cJSON_AddNumberToObject(root, "auto_update_battery_min",
+                                config_manager_get_auto_update_battery_min());
+
         // Optional external battery voltage divider (boards with no built-in
         // battery ADC only). The options array is empty on boards that don't
         // support this at all, so the WebGUI can hide the control entirely.

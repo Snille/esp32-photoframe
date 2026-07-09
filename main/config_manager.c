@@ -58,6 +58,10 @@ static bool deep_sleep_enabled = true;   // Enabled by default
 static int battery_adc_gpio = -1;        // -1 = no external divider configured
 static float battery_cal_scale = -1.0f;  // <0 = unset (board driver's factory default)
 
+// OTA auto-update (server-owned, pushed via config-sync)
+static bool auto_update_enabled = false;  // Default off — manual canary
+static int auto_update_battery_min = DEFAULT_AUTO_UPDATE_BATTERY_MIN;
+
 // Button gestures → actions
 static char btn_action_short[BUTTON_ACTION_MAX_LEN] = DEFAULT_BTN_SHORT_ACTION;
 static char btn_action_long[BUTTON_ACTION_MAX_LEN] = DEFAULT_BTN_LONG_ACTION;
@@ -313,6 +317,21 @@ esp_err_t config_manager_init(void)
             stored_battery_cal > 0) {
             battery_cal_scale = (float) stored_battery_cal / 10000.0f;
             ESP_LOGI(TAG, "Loaded battery cal scale from NVS: %.4f", battery_cal_scale);
+        }
+
+        // OTA auto-update
+        uint8_t stored_auto_update = 0;
+        if (nvs_get_u8(nvs_handle, NVS_AUTO_UPDATE_KEY, &stored_auto_update) == ESP_OK) {
+            auto_update_enabled = (stored_auto_update != 0);
+            ESP_LOGI(TAG, "Loaded auto-update setting from NVS: %s",
+                     auto_update_enabled ? "enabled" : "disabled");
+        }
+
+        int32_t stored_auto_update_batt_min = 0;
+        if (nvs_get_i32(nvs_handle, NVS_AUTO_UPDATE_BATT_MIN_KEY, &stored_auto_update_batt_min) ==
+            ESP_OK) {
+            auto_update_battery_min = stored_auto_update_batt_min;
+            ESP_LOGI(TAG, "Loaded auto-update battery min from NVS: %d%%", auto_update_battery_min);
         }
 
         // Button gestures → actions (fall back to compiled defaults if unset)
@@ -1091,6 +1110,53 @@ void config_manager_set_battery_cal_scale(float scale)
 float config_manager_get_battery_cal_scale(void)
 {
     return battery_cal_scale;
+}
+
+// --- OTA auto-update ---
+
+void config_manager_set_auto_update(bool enabled)
+{
+    auto_update_enabled = enabled;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_u8(nvs_handle, NVS_AUTO_UPDATE_KEY, enabled ? 1 : 0);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+
+    ESP_LOGI(TAG, "Auto-update %s", enabled ? "enabled" : "disabled");
+}
+
+bool config_manager_get_auto_update(void)
+{
+    return auto_update_enabled;
+}
+
+void config_manager_set_auto_update_battery_min(int percent)
+{
+    // Clamp to a safe band: never auto-install on a near-dead battery, and
+    // don't require an implausibly high level either.
+    if (percent < 10) {
+        percent = 10;
+    } else if (percent > 90) {
+        percent = 90;
+    }
+    auto_update_battery_min = percent;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_i32(nvs_handle, NVS_AUTO_UPDATE_BATT_MIN_KEY, percent);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+
+    ESP_LOGI(TAG, "Auto-update battery min set to %d%%", percent);
+}
+
+int config_manager_get_auto_update_battery_min(void)
+{
+    return auto_update_battery_min;
 }
 
 // --- Button gestures → actions ---

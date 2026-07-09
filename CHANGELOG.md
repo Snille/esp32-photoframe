@@ -10,6 +10,24 @@ DFRobot FireBeetle) on **ESP-IDF v6.0** from a single `v<version>` tag; each
 release carries every board's flashable factory bin and drives the web flasher.
 (The old manual `firebeetle-v<version>` line is retired.)
 
+## 2.15.0
+
+### Added
+- **Server-controlled OTA auto-update.** A new per-device `auto_update` setting,
+  owned by the server and pushed to the frame via config-sync, makes the frame's
+  daily OTA check **self-install** a found update instead of only lighting the
+  update icon. This is the clean answer for remote frames with no physical or
+  WebGUI access — no server push (which needs the frame's HTTP server up) is
+  required, since the periodic check downloads straight from GitHub. Default
+  **off**, so each frame stays a manual canary until the server turns it on.
+  - **Battery-gated** so a dying, unreachable frame is never bricked mid-flash:
+    the install proceeds only when the frame is on external power, or (on
+    battery) at/above a configurable minimum charge (`auto_update_battery_min`,
+    default 30 %, clamped 10–90). A missing/implausible battery reading defers
+    the install rather than guessing.
+  - Runs on the existing 24 h check cadence; the frame skips the install with a
+    logged reason when the gate fails.
+
 ## 2.14.1
 
 ### Fixed

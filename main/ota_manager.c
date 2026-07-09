@@ -7,6 +7,7 @@
 #include "board_hal.h"
 #include "cJSON.h"
 #include "config.h"
+#include "config_manager.h"
 #include "esp_crt_bundle.h"
 #include "esp_http_client.h"
 #include "esp_https_ota.h"
@@ -334,6 +335,44 @@ cleanup:
     return err;
 }
 
+// Decide whether a battery-gated auto-install is safe right now. The whole
+// point of the gate is to never brick an unreachable frame on a dying battery:
+// installing means a ~2.7 MB download + flash write + reboot. Allow it when the
+// frame is on external power, otherwise require the configured minimum charge.
+// A board that can't sense charge state at all falls back to the percent test.
+static bool auto_update_battery_gate_ok(const char **reason_out)
+{
+    if (board_hal_supports_charge_status() &&
+        (board_hal_is_charging() || board_hal_is_usb_connected())) {
+        if (reason_out) {
+            *reason_out = "on external power";
+        }
+        return true;
+    }
+
+    int min_percent = config_manager_get_auto_update_battery_min();
+    int pct = board_hal_get_battery_percent();
+
+    // A missing/implausible reading (no battery, or a failed sample) is treated
+    // as "not safe" rather than guessed — better to defer than risk a brick.
+    if (pct < 0 || !board_hal_is_battery_connected()) {
+        if (reason_out) {
+            *reason_out = "battery level unknown";
+        }
+        return false;
+    }
+    if (pct < min_percent) {
+        if (reason_out) {
+            *reason_out = "battery below threshold";
+        }
+        return false;
+    }
+    if (reason_out) {
+        *reason_out = "battery ok";
+    }
+    return true;
+}
+
 static void ota_check_task(void *pvParameter)
 {
     // pvParameter is a boolean: true = notify HA, false/NULL = don't notify
@@ -390,6 +429,23 @@ static void ota_check_task(void *pvParameter)
     if (notify_ha) {
         ESP_LOGI(TAG, "Notifying HA of OTA status update");
         ha_notify_update();
+    }
+
+    // Server-owned auto-update: if the server has turned this frame's auto_update
+    // on (pushed via config-sync) and an update is available, self-install it —
+    // no WebGUI / server push needed, which is the whole point for remote frames.
+    // Gated on battery so a dying, unreachable frame never bricks mid-flash.
+    if (update_available && config_manager_get_auto_update()) {
+        const char *reason = NULL;
+        if (auto_update_battery_gate_ok(&reason)) {
+            ESP_LOGI(TAG, "Auto-update enabled and %s — starting install", reason);
+            esp_err_t start_err = ota_start_update();
+            if (start_err != ESP_OK) {
+                ESP_LOGW(TAG, "Auto-update install did not start: %s", esp_err_to_name(start_err));
+            }
+        } else {
+            ESP_LOGI(TAG, "Auto-update enabled but skipping install (%s)", reason);
+        }
     }
 
     vTaskDelete(NULL);

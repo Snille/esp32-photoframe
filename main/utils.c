@@ -307,6 +307,19 @@ esp_err_t apply_config_from_json(cJSON *root)
         power_manager_set_deep_sleep_enabled(cJSON_IsTrue(item));
     }
 
+    // OTA auto-update (server-owned: the server pushes this into the config
+    // payload so remote frames with no WebGUI access can be told to self-install
+    // updates). The battery gate is enforced on-device in ota_manager.
+    item = cJSON_GetObjectItem(root, "auto_update");
+    if (item && cJSON_IsBool(item)) {
+        config_manager_set_auto_update(cJSON_IsTrue(item));
+    }
+
+    item = cJSON_GetObjectItem(root, "auto_update_battery_min");
+    if (item && cJSON_IsNumber(item)) {
+        config_manager_set_auto_update_battery_min(item->valueint);
+    }
+
     // Optional external battery voltage divider pin (boards with no built-in
     // battery ADC only). -1 disables it. Invalid pins are logged and ignored
     // rather than failing the whole config save -- the WebGUI only ever sends

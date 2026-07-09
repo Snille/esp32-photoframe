@@ -115,6 +115,13 @@ typedef enum {
 // board_hal_set_battery_cal_scale().
 #define NVS_BATTERY_CAL_SCALE_KEY "batt_cal"
 
+// OTA auto-update: server-owned, pushed via config-sync (X-Config-Payload).
+// When enabled, the periodic OTA check auto-installs a found update, gated by
+// battery level. Default off — each frame is a manual canary until turned on.
+#define NVS_AUTO_UPDATE_KEY "auto_update"
+#define NVS_AUTO_UPDATE_BATT_MIN_KEY "au_batt_min"
+#define DEFAULT_AUTO_UPDATE_BATTERY_MIN 30
+
 // Button gestures → actions (configurable from the WebUI). Action ids:
 // "none", "next_image", "sleep", "toggle_deep_sleep", "info_screen".
 // Wake-from-deep-sleep is implicit (any press wakes the frame) and not mapped.
