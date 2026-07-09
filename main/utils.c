@@ -353,6 +353,59 @@ esp_err_t apply_config_from_json(cJSON *root)
     return ESP_OK;
 }
 
+// Apply a remote config-sync payload received via the X-Config-Payload header
+// (structure: { "config": {...}, "processing_settings": {...}, "color_palette": {...} }).
+// Safe to call with a NULL/empty buffer. This MUST run on every successful pull
+// path -- including the raw-EPD and EPDGZ streaming fast paths, which return
+// before the file-based flow -- otherwise server-pushed config (e.g. auto_update)
+// is silently dropped on storage/PSRAM frames that stream their images.
+static void apply_remote_config_payload(const char *config_payload_buffer)
+{
+    if (!config_payload_buffer || strlen(config_payload_buffer) == 0) {
+        return;
+    }
+
+    cJSON *payload = cJSON_Parse(config_payload_buffer);
+    if (!payload) {
+        ESP_LOGE(TAG, "Failed to parse config payload JSON");
+        return;
+    }
+
+    bool applied = false;
+
+    cJSON *config_obj = cJSON_GetObjectItem(payload, "config");
+    if (config_obj && cJSON_IsObject(config_obj)) {
+        apply_config_from_json(config_obj);
+        applied = true;
+    }
+
+    cJSON *proc_obj = cJSON_GetObjectItem(payload, "processing_settings");
+    if (proc_obj && cJSON_IsObject(proc_obj)) {
+        processing_settings_t settings;
+        processing_settings_get_defaults(&settings);
+        processing_settings_from_json(proc_obj, &settings);
+        processing_settings_save(&settings);
+        applied = true;
+    }
+
+    cJSON *palette_obj = cJSON_GetObjectItem(payload, "color_palette");
+    if (palette_obj && cJSON_IsObject(palette_obj)) {
+        color_palette_t palette;
+        color_palette_get_defaults(&palette);
+        color_palette_from_json(palette_obj, &palette);
+        color_palette_save(&palette);
+        image_processor_reload_palette();
+        applied = true;
+    }
+
+    cJSON_Delete(payload);
+
+    if (applied) {
+        config_manager_touch_config();
+        ESP_LOGI(TAG, "Remote config payload applied successfully");
+    }
+}
+
 // Context for HTTP event handler
 typedef struct {
     FILE *file;
@@ -946,6 +999,7 @@ esp_err_t fetch_and_save_image_from_url(const char *url, char *saved_image_path,
     // Those bytes are copied directly into the display buffer while downloading.
     if (raw_epd_streamed) {
         ESP_LOGI(TAG, "Raw EPD streamed into EPD buffer (%zu bytes), displaying", raw_epd_written);
+        apply_remote_config_payload(config_payload_buffer);
         free(content_type);
         free(thumbnail_url_buffer);
         free(config_payload_buffer);
@@ -964,9 +1018,10 @@ esp_err_t fetch_and_save_image_from_url(const char *url, char *saved_image_path,
     if (inflate_streamed) {
         ESP_LOGI(TAG, "EPDGZ streamed into EPD buffer (%zu bytes uncompressed), displaying",
                  inflate_written);
+        apply_remote_config_payload(config_payload_buffer);
         free(content_type);
-        // Thumbnail and config payload still useful even for EPDGZ
-        // (thumbnail was downloaded separately after this point - but for streaming we skip it)
+        // Thumbnail was downloaded separately after this point, but for streaming
+        // we skip it.
         free(thumbnail_url_buffer);
         free(config_payload_buffer);
         unlink(temp_upload_path);  // Remove the (empty) temp file
@@ -1051,48 +1106,9 @@ esp_err_t fetch_and_save_image_from_url(const char *url, char *saved_image_path,
         free(thumbnail_url_buffer);
     }
 
-    // Apply remote config payload if received from server
-    // Expected structure: { "config": {...}, "processing_settings": {...}, "color_palette": {...} }
-    if (config_payload_buffer && strlen(config_payload_buffer) > 0) {
-        cJSON *payload = cJSON_Parse(config_payload_buffer);
-        if (payload) {
-            bool applied = false;
-
-            cJSON *config_obj = cJSON_GetObjectItem(payload, "config");
-            if (config_obj && cJSON_IsObject(config_obj)) {
-                apply_config_from_json(config_obj);
-                applied = true;
-            }
-
-            cJSON *proc_obj = cJSON_GetObjectItem(payload, "processing_settings");
-            if (proc_obj && cJSON_IsObject(proc_obj)) {
-                processing_settings_t settings;
-                processing_settings_get_defaults(&settings);
-                processing_settings_from_json(proc_obj, &settings);
-                processing_settings_save(&settings);
-                applied = true;
-            }
-
-            cJSON *palette_obj = cJSON_GetObjectItem(payload, "color_palette");
-            if (palette_obj && cJSON_IsObject(palette_obj)) {
-                color_palette_t palette;
-                color_palette_get_defaults(&palette);
-                color_palette_from_json(palette_obj, &palette);
-                color_palette_save(&palette);
-                image_processor_reload_palette();
-                applied = true;
-            }
-
-            cJSON_Delete(payload);
-
-            if (applied) {
-                config_manager_touch_config();
-                ESP_LOGI(TAG, "Remote config payload applied successfully");
-            }
-        } else {
-            ESP_LOGE(TAG, "Failed to parse config payload JSON");
-        }
-    }
+    // Apply remote config payload if received from server (same helper the
+    // raw-EPD / EPDGZ streaming fast paths call before they return).
+    apply_remote_config_payload(config_payload_buffer);
     free(config_payload_buffer);
 
     const char *final_path = NULL;

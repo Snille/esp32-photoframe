@@ -10,6 +10,20 @@ DFRobot FireBeetle) on **ESP-IDF v6.0** from a single `v<version>` tag; each
 release carries every board's flashable factory bin and drives the web flasher.
 (The old manual `firebeetle-v<version>` line is retired.)
 
+## 2.15.2
+
+### Fixed
+- **Server-pushed config-sync (`X-Config-Payload`) was silently dropped on the
+  raw-EPD and EPDGZ streaming pull paths.** Those two fast paths — used by
+  storage/PSRAM frames that stream a display-ready image straight into the panel
+  buffer — freed the received config payload and returned *before* the code that
+  applies it, so any server-pushed setting never reached those frames. It went
+  unnoticed because synced fields were normally set on the frame's own WebGUI;
+  the new server-owned `auto_update` (v2.15.0), which only ever arrives via this
+  push, exposed it. The payload is now applied on every successful pull path via
+  a shared helper. Without this, `auto_update` never turns on for streaming
+  frames (e.g. the FireBeetle 2 ESP32-S3, XIAO EE02).
+
 ## 2.15.1
 
 ### Changed
