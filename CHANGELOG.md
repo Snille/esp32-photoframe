@@ -10,13 +10,6 @@ DFRobot FireBeetle) on **ESP-IDF v6.0** from a single `v<version>` tag; each
 release carries every board's flashable factory bin and drives the web flasher.
 (The old manual `firebeetle-v<version>` line is retired.)
 
-## 2.15.3
-
-### Changed
-- Patch release with no functional change from v2.15.2 — a newer release used
-  to confirm, on hardware, that a frame with `auto_update` on self-installs it
-  once the config-sync fix (v2.15.2) lets the setting actually reach the frame.
-
 ## 2.15.2
 
 ### Fixed
@@ -30,13 +23,6 @@ release carries every board's flashable factory bin and drives the web flasher.
   push, exposed it. The payload is now applied on every successful pull path via
   a shared helper. Without this, `auto_update` never turns on for streaming
   frames (e.g. the FireBeetle 2 ESP32-S3, XIAO EE02).
-
-## 2.15.1
-
-### Changed
-- Patch release used to validate the v2.15.0 server-controlled auto-update
-  self-install path end-to-end on real hardware (a newer release the canary
-  frame can pick up on its own). No functional firmware change from v2.15.0.
 
 ## 2.15.0
 
