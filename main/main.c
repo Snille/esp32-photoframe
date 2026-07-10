@@ -187,6 +187,24 @@ static void button_task(void *arg)
     }
 }
 
+// Bring up mDNS + the HTTP config server exactly once per wake. Idempotent so
+// both the pre-rotation HA path and the post-rotation config-sync window can
+// call it freely without tracking who started it. (Deep sleep reboots the app,
+// so the guard resets each wake.)
+static void ensure_http_server_running(void)
+{
+    static bool started = false;
+    if (started) {
+        return;
+    }
+    // Start mDNS so HA / the LAN can resolve photoframe.local.
+    ESP_ERROR_CHECK(mdns_service_init());
+    ESP_ERROR_CHECK(http_server_init());
+    http_server_set_ready();
+    started = true;
+    ESP_LOGI(TAG, "HTTP server started");
+}
+
 void deep_sleep_wake_main(wakeup_source_t wakeup_src)
 {
     bool is_button_wake = (wakeup_src == WAKEUP_SOURCE_ROTATE_BUTTON);
@@ -209,13 +227,21 @@ void deep_sleep_wake_main(wakeup_source_t wakeup_src)
         }
     }
 
-    // Start HTTP server for 10 seconds to allow config modifications
-    if (wifi_connected && ha_configured) {
+    // Run periodic tasks (OTA check, SNTP sync if due) on ANY WiFi-connected
+    // wake, not only when Home Assistant is configured. URL-mode frames without
+    // HA otherwise never sync time or run the OTA / auto-update check after deep
+    // sleep — which is exactly what the server-controlled auto_update relies on.
+    if (wifi_connected) {
         power_manager_reset_sleep_timer();
-
-        // Check and run periodic tasks (OTA check, SNTP sync if due)
         ESP_LOGI(TAG, "Checking periodic tasks...");
         periodic_tasks_check_and_run();
+    }
+
+    // Bring the config HTTP server up before rotating + notify HA online
+    // (HA-configured frames only). URL-mode frames start it on demand after
+    // rotating if the server asks to pull config — see the post-rotate window.
+    if (wifi_connected && ha_configured) {
+        power_manager_reset_sleep_timer();
 
         // After time sync, check if we're still in sleep schedule.
         // RTC drift during long sleeps can cause early wakeup (e.g., wake at 7:55
@@ -228,14 +254,9 @@ void deep_sleep_wake_main(wakeup_source_t wakeup_src)
             // Won't reach here after sleep
         }
 
-        ESP_LOGI(TAG, "Starting HTTP server for 10 seconds before sleep");
+        ESP_LOGI(TAG, "Starting HTTP server before sleep");
         power_manager_reset_sleep_timer();
-
-        // Start mDNS service so HA can resolve photoframe.local
-        ESP_ERROR_CHECK(mdns_service_init());
-
-        ESP_ERROR_CHECK(http_server_init());
-        http_server_set_ready();
+        ensure_http_server_running();
 
         ha_notify_online();
     }
@@ -257,11 +278,23 @@ void deep_sleep_wake_main(wakeup_source_t wakeup_src)
     // Notify HA that data has been updated (after both OTA check and rotation)
     if (wifi_connected && ha_configured) {
         ha_notify_update();
+    }
 
-        // Keep server running for 10 seconds
-        ESP_LOGI(TAG, "HTTP server available for config changes");
-        vTaskDelay(pdMS_TO_TICKS(10000));
-
+    // Keep the HTTP server up briefly after rotating so a late config change — or
+    // a server-side config PULL (X-Post-Rotate-Wait-Sec, sent when the server sees
+    // the device reports a newer config) — can reach us. HA frames always get a
+    // short window; a server-requested wait extends it and works even without HA:
+    // URL-mode frames don't start the server before rotating, so start it on
+    // demand here.
+    int hold_sec = (wifi_connected && ha_configured) ? HA_CONFIG_WINDOW_SEC : 0;
+    int server_wait = utils_get_post_rotate_wait_sec();
+    if (server_wait > hold_sec) {
+        hold_sec = server_wait;
+    }
+    if (wifi_connected && hold_sec > 0) {
+        ensure_http_server_running();  // no-op if the HA path already started it
+        ESP_LOGI(TAG, "HTTP server available for config sync (%d s)", hold_sec);
+        vTaskDelay(pdMS_TO_TICKS(hold_sec * 1000));
         ESP_LOGI(TAG, "HTTP server window closed");
     }
 

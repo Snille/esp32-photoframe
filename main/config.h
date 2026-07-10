@@ -67,6 +67,17 @@ typedef enum {
 
 #define IMAGE_ROTATE_INTERVAL_SEC 3600
 
+// How long HA-configured frames keep the HTTP config server up after rotating
+// so a late config push can land. A server-requested post-rotate wait can
+// extend it (see below).
+#define HA_CONFIG_WINDOW_SEC 10
+
+// Upper bound on how long a server may ask us to stay awake after rotating (via
+// the X-Post-Rotate-Wait-Sec image-response header) so it can pull our config.
+// Caps a misbehaving/hostile server from keeping the frame awake and draining
+// the battery.
+#define POST_ROTATE_WAIT_MAX_SEC 30
+
 // WiFi
 #define NVS_WIFI_SSID_KEY "wifi_ssid"
 #define NVS_WIFI_PASS_KEY "wifi_pass"

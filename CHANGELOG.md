@@ -10,6 +10,26 @@ DFRobot FireBeetle) on **ESP-IDF v6.0** from a single `v<version>` tag; each
 release carries every board's flashable factory bin and drives the web flasher.
 (The old manual `firebeetle-v<version>` line is retired.)
 
+## 2.16.0
+
+### Fixed
+- **Periodic tasks (OTA check + time sync) now run on any WiFi-connected wake, not
+  only when Home Assistant is configured** (adapted from upstream `08b29c8`).
+  Previously the OTA/auto-update check and SNTP sync only ran on rotation wakes for
+  HA-configured frames, so plain URL-mode frames never ran them after deep sleep —
+  meaning the server-controlled **auto-update never self-triggered** on those
+  frames (it only fired when the frame happened to be awake in WebGUI mode). Now
+  it runs on every WiFi wake.
+
+### Added
+- **Config sync is now bidirectional: the server can pull config that was changed
+  on the frame** (adapted from upstream `38ec808`, pairs with the server's
+  device-newer pull-back). When the server sees the frame report a newer config,
+  it answers the image fetch with `X-Post-Rotate-Wait-Sec`; the frame parses that
+  header (clamped to 30 s), keeps its HTTP server up for that window after
+  rotating — starting it on demand even without HA — so the server can fetch the
+  frame's current config and catch up to on-device edits.
+
 ## 2.15.2
 
 ### Fixed
