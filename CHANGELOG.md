@@ -10,6 +10,31 @@ DFRobot FireBeetle) on **ESP-IDF v6.0** from a single `v<version>` tag; each
 release carries every board's flashable factory bin and drives the web flasher.
 (The old manual `firebeetle-v<version>` line is retired.)
 
+## 2.17.0
+
+### Fixed
+- **A truncated image is never displayed again.** The EPDGZ streaming path
+  inflates directly into the live panel framebuffer and treated any output at
+  all as success, so a transfer cut off mid-body still looked healthy
+  (`ESP_OK`, HTTP 200, bytes received) and the half-filled buffer was painted —
+  a torn or half-black frame that stayed until the next rotation. Completion is
+  now proven via `Z_STREAM_END` (which also verifies the gzip CRC32/ISIZE
+  trailer); anything short of that is treated as a failed download and retried.
+  The raw-EPD path already checked the exact size — which is why only EPDGZ
+  boards ever showed this — and now reports incompleteness the same way.
+
+### Added
+- **Per-frame rotation offset.** With clock-aligned rotation the wake grid was
+  absolute (computed from midnight), so every frame sharing an interval woke in
+  the same second and harmonic intervals collided on the common boundaries — a
+  15-minute frame and two 30-minute frames all fetch at :00 and :30, twice an
+  hour, every hour, contending for WiFi and the server. The new
+  `rotate_offset` (seconds, NVS `rotate_off`) shifts the grid per frame while
+  keeping the wakes on tidy clock times. Offset 0 is the previous behaviour
+  exactly. Settable on the frame's own WebUI ("Offset (minutes)", Auto Rotate)
+  and from the server's device dialog, which also warns when two frames are
+  scheduled to fetch at the same moment.
+
 ## 2.16.0
 
 ### Fixed
