@@ -205,6 +205,12 @@ esp_err_t apply_config_from_json(cJSON *root)
         power_manager_reset_rotate_timer();
     }
 
+    item = cJSON_GetObjectItem(root, "rotate_offset");
+    if (item && cJSON_IsNumber(item)) {
+        config_manager_set_rotate_offset(item->valueint);
+        power_manager_reset_rotate_timer();
+    }
+
     item = cJSON_GetObjectItem(root, "sleep_schedule_enabled");
     if (item && cJSON_IsBool(item)) {
         config_manager_set_sleep_schedule_enabled(cJSON_IsTrue(item));
@@ -431,6 +437,7 @@ typedef struct {
     bool inflate_checked;        // true after the first body chunk has been inspected
     bool inflate_active;         // true when streaming inflate is in use
     bool inflate_failed;         // true if any inflate step failed
+    bool inflate_done;           // true once the gzip stream ended cleanly (Z_STREAM_END)
     uint8_t *inflate_out;        // Output buffer (EPD image buffer, pre-allocated)
     size_t inflate_out_size;     // EPD buffer capacity in bytes
     size_t inflate_out_written;  // Bytes decompressed so far
@@ -491,6 +498,11 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt)
                 ctx->inflate_failed = true;
             } else {
                 ctx->inflate_out_written = ctx->inflate_out_size - ctx->inflate_strm.avail_out;
+                if (ret == Z_STREAM_END) {
+                    // Whole gzip member decoded, CRC32/ISIZE trailer verified.
+                    // Anything short of this means the transfer was cut off.
+                    ctx->inflate_done = true;
+                }
             }
             ctx->total_read += evt->data_len;
         } else if (ctx->file) {
@@ -583,6 +595,9 @@ esp_err_t fetch_and_save_image_from_url(const char *url, char *saved_image_path,
     size_t inflate_written = 0;
     bool raw_epd_streamed = false;
     size_t raw_epd_written = 0;
+    // Set when a streamed payload arrived truncated: HTTP looks fine (200, bytes
+    // received) but the panel buffer only got part of the image.
+    bool stream_incomplete = false;
 
     // Allocate buffers once before retry loop
     thumbnail_url_buffer = calloc(512, 1);
@@ -632,6 +647,7 @@ esp_err_t fetch_and_save_image_from_url(const char *url, char *saved_image_path,
                                   .inflate_checked = false,
                                   .inflate_active = false,
                                   .inflate_failed = false,
+                                  .inflate_done = false,
                                   .inflate_out = epd_buf,
                                   .inflate_out_size = (size_t) epd_buf_size,
                                   .inflate_out_written = 0,
@@ -932,18 +948,39 @@ esp_err_t fetch_and_save_image_from_url(const char *url, char *saved_image_path,
         total_downloaded = ctx.total_read;
         content_type = ctx.content_type;
 
-        // Finish inflate stream if active, capture result
+        // Finish inflate stream if active, capture result.
+        //
+        // Both streaming paths decode straight into the live panel framebuffer,
+        // so a transfer that is cut off mid-body leaves a half-updated buffer.
+        // Only a provably COMPLETE payload may be displayed — otherwise mark the
+        // attempt incomplete so the retry loop fetches it again instead of
+        // painting the torn image (which sticks until the next rotation).
+        // (A 304 carries no body, so completeness is not evaluated for it.)
+        stream_incomplete = false;
+        bool body_expected = (status_code == 200);
         if (ctx.inflate_active) {
             inflateEnd(&ctx.inflate_strm);
-            if (!ctx.inflate_failed && ctx.inflate_out_written > 0) {
+            if (!body_expected) {
+                // Nothing to judge; the status check below decides the outcome.
+            } else if (!ctx.inflate_failed && ctx.inflate_done) {
                 inflate_streamed = true;
                 inflate_written = ctx.inflate_out_written;
+            } else {
+                stream_incomplete = true;
+                ESP_LOGE(TAG, "EPDGZ stream incomplete (%zu/%zu bytes inflated%s)",
+                         ctx.inflate_out_written, ctx.inflate_out_size,
+                         ctx.inflate_failed ? ", inflate error" : ", stream truncated");
             }
         }
-        if (ctx.raw_epd_active && !ctx.raw_epd_failed &&
-            ctx.raw_epd_written == ctx.inflate_out_size) {
-            raw_epd_streamed = true;
-            raw_epd_written = ctx.raw_epd_written;
+        if (ctx.raw_epd_active && body_expected) {
+            if (!ctx.raw_epd_failed && ctx.raw_epd_written == ctx.inflate_out_size) {
+                raw_epd_streamed = true;
+                raw_epd_written = ctx.raw_epd_written;
+            } else {
+                stream_incomplete = true;
+                ESP_LOGE(TAG, "Raw EPD stream incomplete (%zu/%zu bytes)", ctx.raw_epd_written,
+                         ctx.inflate_out_size);
+            }
         }
 
         fclose(file);
@@ -970,7 +1007,7 @@ esp_err_t fetch_and_save_image_from_url(const char *url, char *saved_image_path,
         }
 
         // Check if download was successful
-        if (err == ESP_OK && status_code == 200 && total_downloaded > 0) {
+        if (err == ESP_OK && status_code == 200 && total_downloaded > 0 && !stream_incomplete) {
             ESP_LOGI(TAG, "Downloaded %d bytes (content_length: %d), content_type: %s",
                      total_downloaded, content_length, content_type);
             break;  // Success, exit retry loop
@@ -983,6 +1020,8 @@ esp_err_t fetch_and_save_image_from_url(const char *url, char *saved_image_path,
             ESP_LOGE(TAG, "HTTP request failed with status code: %d", status_code);
         } else if (total_downloaded <= 0) {
             ESP_LOGE(TAG, "No data downloaded from URL");
+        } else if (stream_incomplete) {
+            ESP_LOGE(TAG, "Truncated image payload, refusing to display a partial frame");
         }
 
         // Clean up failed download (don't free content_type - it's reused across retries)
@@ -990,7 +1029,7 @@ esp_err_t fetch_and_save_image_from_url(const char *url, char *saved_image_path,
     }
 
     // Check final result after all retries
-    if (err != ESP_OK || status_code != 200 || total_downloaded <= 0) {
+    if (err != ESP_OK || status_code != 200 || total_downloaded <= 0 || stream_incomplete) {
         ESP_LOGE(TAG, "Failed to download image after %d attempts", max_retries);
         // Store descriptive error for UI display
         char err_msg[256];
@@ -1003,6 +1042,8 @@ esp_err_t fetch_and_save_image_from_url(const char *url, char *saved_image_path,
             }
         } else if (status_code != 200) {
             snprintf(err_msg, sizeof(err_msg), "Server returned HTTP %d", status_code);
+        } else if (stream_incomplete) {
+            snprintf(err_msg, sizeof(err_msg), "Truncated image from server");
         } else {
             snprintf(err_msg, sizeof(err_msg), "No data received from server");
         }
@@ -1465,7 +1506,8 @@ int get_seconds_until_next_wakeup(void)
         .end_minutes = config_manager_get_sleep_schedule_end(),
     };
 
-    return calculate_next_wakeup_interval(&timeinfo, rotate_interval, aligned, &sleep_schedule);
+    return calculate_next_wakeup_interval(&timeinfo, rotate_interval, aligned,
+                                          config_manager_get_rotate_offset(), &sleep_schedule);
 }
 
 void sanitize_hostname(const char *device_name, char *hostname, size_t max_len)
