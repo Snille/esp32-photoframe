@@ -415,10 +415,28 @@ static void apply_remote_config_payload(const char *config_payload_buffer)
         applied = true;
     }
 
+    // The server stamps its payload with the time IT last changed the config.
+    // Adopt that stamp verbatim instead of stamping ourselves with "now":
+    // touching it here would make us report a timestamp newer than the server's
+    // on the very next fetch, so the server would conclude WE hold the newer
+    // config and switch to pulling from us — every cycle, forever, and the
+    // settings it was trying to push would never land. Read before the payload
+    // is freed.
+    cJSON *server_ts = cJSON_GetObjectItem(payload, "config_last_updated");
+    int64_t server_ts_value =
+        (server_ts && cJSON_IsNumber(server_ts)) ? (int64_t) cJSON_GetNumberValue(server_ts) : 0;
+
     cJSON_Delete(payload);
 
     if (applied) {
-        config_manager_touch_config();
+        if (server_ts_value > 0) {
+            config_manager_set_config_last_updated(server_ts_value);
+        } else {
+            // Server too old to stamp its payload: leave our timestamp alone.
+            // It stays behind the server's, so the server keeps pushing (which
+            // is idempotent) rather than flipping into the pull-back loop above.
+            ESP_LOGD(TAG, "Config payload carried no server timestamp; leaving ours untouched");
+        }
         ESP_LOGI(TAG, "Remote config payload applied successfully");
     }
 }

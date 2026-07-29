@@ -10,6 +10,22 @@ DFRobot FireBeetle) on **ESP-IDF v6.0** from a single `v<version>` tag; each
 release carries every board's flashable factory bin and drives the web flasher.
 (The old manual `firebeetle-v<version>` line is retired.)
 
+## 2.17.1
+
+### Fixed
+- **A config pushed from the server now sticks.** Applying a remote config
+  payload called `config_manager_touch_config()`, stamping the frame with the
+  time it applied the change — always later than the server's own
+  `config_last_updated`. On the next image fetch the frame therefore reported a
+  newer timestamp, so the server concluded the *frame* held the newer config and
+  switched to pulling from it instead of pushing. That repeated every cycle, and
+  since the frame is usually asleep again before the pull-back window closes
+  ("could not reach device … within 20s"), settings saved in the server's web UI
+  never landed. The frame now adopts the `config_last_updated` the server stamps
+  into the payload; against a server too old to send one it leaves its own
+  timestamp alone rather than jumping ahead. Requires server ≥ v1.49.0 for the
+  stamp, and is harmless without it.
+
 ## 2.17.0
 
 ### Fixed
