@@ -47,6 +47,10 @@ int config_manager_get_rotate_interval(void);
 
 void config_manager_set_auto_rotate_aligned(bool enabled);
 bool config_manager_get_auto_rotate_aligned(void);
+// Seconds the clock-aligned wake grid is shifted by, so frames sharing an
+// interval stagger their pulls. 0 = wake exactly on the interval boundary.
+void config_manager_set_rotate_offset(int seconds);
+int config_manager_get_rotate_offset(void);
 
 void config_manager_set_sleep_schedule_enabled(bool enabled);
 bool config_manager_get_sleep_schedule_enabled(void);

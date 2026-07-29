@@ -1809,6 +1809,7 @@ static esp_err_t config_handler(httpd_req_t *req)
         cJSON_AddNumberToObject(root, "rotate_interval", config_manager_get_rotate_interval());
         cJSON_AddBoolToObject(root, "auto_rotate_aligned",
                               config_manager_get_auto_rotate_aligned());
+        cJSON_AddNumberToObject(root, "rotate_offset", config_manager_get_rotate_offset());
         cJSON_AddBoolToObject(root, "sleep_schedule_enabled",
                               config_manager_get_sleep_schedule_enabled());
         cJSON_AddNumberToObject(root, "sleep_schedule_start",

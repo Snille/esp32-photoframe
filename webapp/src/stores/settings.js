@@ -31,6 +31,7 @@ export const useSettingsStore = defineStore("settings", () => {
     rotateHours: 1,
     rotateMinutes: 0,
     autoRotateAligned: true,
+    rotateOffsetMinutes: 0,
     sleepScheduleEnabled: false,
     sleepScheduleStart: "23:00",
     sleepScheduleEnd: "07:00",
@@ -183,6 +184,7 @@ export const useSettingsStore = defineStore("settings", () => {
       const rotateIntervalSeconds = data.rotate_interval || 3600;
       deviceSettings.value.rotateHours = Math.floor(rotateIntervalSeconds / 3600);
       deviceSettings.value.rotateMinutes = Math.floor((rotateIntervalSeconds % 3600) / 60);
+      deviceSettings.value.rotateOffsetMinutes = Math.floor((data.rotate_offset || 0) / 60);
 
       deviceSettings.value.displayRotationDeg = data.display_rotation_deg ?? 180;
       deviceSettings.value.imageUrl = data.image_url || "https://loremflickr.com/800/480";
@@ -275,6 +277,7 @@ export const useSettingsStore = defineStore("settings", () => {
     const currentConfig = {
       auto_rotate: deviceSettings.value.autoRotate,
       auto_rotate_aligned: deviceSettings.value.autoRotateAligned,
+      rotate_offset: Math.max(0, deviceSettings.value.rotateOffsetMinutes || 0) * 60,
       rotate_interval: rotateInterval,
       display_rotation_deg: deviceSettings.value.displayRotationDeg,
       rotation_mode: deviceSettings.value.rotationMode,

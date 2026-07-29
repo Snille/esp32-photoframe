@@ -24,6 +24,7 @@ static char wifi_password[WIFI_PASS_MAX_LEN] = {0};
 static bool auto_rotate_enabled = false;
 static int rotate_interval = IMAGE_ROTATE_INTERVAL_SEC;
 static bool auto_rotate_aligned = true;
+static int rotate_offset = IMAGE_ROTATE_OFFSET_SEC;
 static bool sleep_schedule_enabled = false;
 static int sleep_schedule_start = 1380;  // Minutes since midnight (23:00 = 23*60)
 static int sleep_schedule_end = 420;     // Minutes since midnight (07:00 = 7*60)
@@ -165,6 +166,12 @@ esp_err_t config_manager_init(void)
             auto_rotate_aligned = (stored_aligned != 0);
             ESP_LOGI(TAG, "Loaded auto-rotate aligned from NVS: %s",
                      auto_rotate_aligned ? "yes" : "no");
+        }
+
+        int32_t stored_offset = IMAGE_ROTATE_OFFSET_SEC;
+        if (nvs_get_i32(nvs_handle, NVS_ROTATE_OFFSET_KEY, &stored_offset) == ESP_OK) {
+            rotate_offset = stored_offset;
+            ESP_LOGI(TAG, "Loaded rotate offset from NVS: %d seconds", rotate_offset);
         }
 
         uint8_t stored_sleep_sched_enabled = 0;
@@ -608,6 +615,25 @@ void config_manager_set_auto_rotate_aligned(bool enabled)
 bool config_manager_get_auto_rotate_aligned(void)
 {
     return auto_rotate_aligned;
+}
+
+void config_manager_set_rotate_offset(int seconds)
+{
+    rotate_offset = seconds;
+
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_i32(nvs_handle, NVS_ROTATE_OFFSET_KEY, seconds);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+
+    ESP_LOGI(TAG, "Rotate offset set to %d seconds", seconds);
+}
+
+int config_manager_get_rotate_offset(void)
+{
+    return rotate_offset;
 }
 
 void config_manager_set_sleep_schedule_enabled(bool enabled)

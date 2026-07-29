@@ -654,6 +654,19 @@ async function enterFlashMode() {
                 Rotation aligns to clock boundaries. 1 hour rotates at 1:00, 2:00, etc.
               </v-alert>
 
+              <v-text-field
+                v-if="settingsStore.deviceSettings.autoRotateAligned"
+                v-model.number="settingsStore.deviceSettings.rotateOffsetMinutes"
+                label="Offset (minutes)"
+                type="number"
+                :min="0"
+                variant="outlined"
+                class="mt-4"
+                :disabled="!settingsStore.deviceSettings.autoRotate"
+                hint="Shifts the aligned wake-up. Give each frame a different offset so several frames sharing an interval don't all fetch in the same second."
+                persistent-hint
+              />
+
               <v-select
                 v-model="settingsStore.deviceSettings.rotationMode"
                 :items="rotationModeOptions"

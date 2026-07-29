@@ -1,15 +1,41 @@
 #include "testable_utils.h"
 
+// Normalize a configured offset into [0, rotate_interval). A negative or
+// oversized value is a config mistake, not a reason to compute a bogus wake.
+static int normalize_offset(int rotate_offset, int rotate_interval)
+{
+    if (rotate_interval <= 0) {
+        return 0;
+    }
+    int offset = rotate_offset % rotate_interval;
+    if (offset < 0) {
+        offset += rotate_interval;
+    }
+    return offset;
+}
+
 int calculate_next_wakeup_interval(const struct tm *timeinfo, int rotate_interval, bool aligned,
-                                   const sleep_schedule_config_t *sleep_schedule)
+                                   int rotate_offset, const sleep_schedule_config_t *sleep_schedule)
 {
     int current_seconds_of_day =
         timeinfo->tm_hour * 3600 + timeinfo->tm_min * 60 + timeinfo->tm_sec;
     int seconds_until_next;
+    int offset = normalize_offset(rotate_offset, rotate_interval);
 
     if (aligned) {
-        int next_aligned_seconds =
-            ((current_seconds_of_day / rotate_interval) + 1) * rotate_interval;
+        // The alignment grid is shifted by `offset` seconds, so several frames
+        // sharing an interval can keep clock-aligned wakes without all hitting
+        // the server (and the WiFi) in the same second. offset == 0 reproduces
+        // the plain top-of-the-hour grid exactly.
+        int relative_seconds = current_seconds_of_day - offset;
+        int next_aligned_seconds;
+        if (relative_seconds < 0) {
+            // Before today's first slot (e.g. 00:02 with a 5-minute offset).
+            next_aligned_seconds = offset;
+        } else {
+            next_aligned_seconds =
+                ((relative_seconds / rotate_interval) + 1) * rotate_interval + offset;
+        }
         seconds_until_next = next_aligned_seconds - current_seconds_of_day;
 
         // If next wakeup is too soon (less than 60s), skip to the following interval.
@@ -60,9 +86,15 @@ int calculate_next_wakeup_interval(const struct tm *timeinfo, int rotate_interva
     // Wake-up would be in sleep schedule, calculate next wake-up time at or after schedule ends.
     long long next_wake_seconds_of_day;
     if (aligned) {
-        // Find the first aligned time >= sleep_end (sleep_end is exclusive).
-        next_wake_seconds_of_day = ((long long) sleep_end_seconds + rotate_interval - 1) /
-                                   rotate_interval * rotate_interval;
+        // Find the first aligned time >= sleep_end (sleep_end is exclusive),
+        // on the same offset-shifted grid used above.
+        long long relative_end = (long long) sleep_end_seconds - offset;
+        if (relative_end <= 0) {
+            next_wake_seconds_of_day = offset;
+        } else {
+            next_wake_seconds_of_day =
+                (relative_end + rotate_interval - 1) / rotate_interval * rotate_interval + offset;
+        }
     } else {
         // For non-aligned rotation, just wake up exactly when the sleep schedule ends
         next_wake_seconds_of_day = sleep_end_seconds;

@@ -67,6 +67,11 @@ typedef enum {
 
 #define IMAGE_ROTATE_INTERVAL_SEC 3600
 
+// Seconds to shift clock-aligned wake-ups by. Lets several frames sharing a
+// rotation interval stagger their pulls instead of all hitting the server (and
+// the WiFi) on the same clock boundary. 0 = wake exactly on the boundary.
+#define IMAGE_ROTATE_OFFSET_SEC 0
+
 // How long HA-configured frames keep the HTTP config server up after rotating
 // so a late config push can land. A server-requested post-rotate wait can
 // extend it (see below).
@@ -95,6 +100,7 @@ typedef enum {
 #define NVS_AUTO_ROTATE_KEY "auto_rotate"
 #define NVS_ROTATE_INTERVAL_KEY "rotate_int"
 #define NVS_AUTO_ROTATE_ALIGNED_KEY "ar_align"
+#define NVS_ROTATE_OFFSET_KEY "rotate_off"
 #define NVS_ROTATION_MODE_KEY "rotation_mode"
 #define NVS_SLEEP_SCHEDULE_ENABLED_KEY "sleep_sched_en"
 #define NVS_SLEEP_SCHEDULE_START_KEY "sleep_start"
