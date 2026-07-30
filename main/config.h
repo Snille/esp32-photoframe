@@ -178,4 +178,9 @@ typedef enum {
 #define GITHUB_API_URL "https://api.github.com/repos/Snille/esp32-photoframe/releases?per_page=10"
 #define OTA_CHECK_INTERVAL_MS (24 * 60 * 60 * 1000)  // 24 hours
 
+// How long a scheduled deep sleep waits for an in-flight OTA to finish. A ~3 MB
+// install over a slow link needs minutes; the battery gate has already decided
+// the frame can afford it, and the install reboots the frame when it completes.
+#define OTA_SLEEP_DEFER_MAX_SEC 300
+
 #endif

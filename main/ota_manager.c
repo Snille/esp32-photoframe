@@ -696,6 +696,34 @@ void ota_update_last_check_time(void)
     periodic_tasks_update_last_run(OTA_CHECK_TASK_NAME);
 }
 
+bool ota_is_busy(void)
+{
+    return ota_status.state == OTA_STATE_CHECKING || ota_status.state == OTA_STATE_DOWNLOADING ||
+           ota_status.state == OTA_STATE_INSTALLING;
+}
+
+void ota_wait_while_busy(int max_wait_sec)
+{
+    if (!ota_is_busy()) {
+        return;
+    }
+
+    ESP_LOGI(TAG, "OTA in progress, holding off sleep (max %d s)", max_wait_sec);
+    for (int waited = 0; waited < max_wait_sec && ota_is_busy(); waited++) {
+        // Also keep the idle timer at bay: it is reset inside the download loop
+        // too, but the wait must survive a check that has not started writing
+        // yet, and the two resets are harmless together.
+        power_manager_reset_sleep_timer();
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+
+    if (ota_is_busy()) {
+        ESP_LOGW(TAG, "OTA still running after %d s; sleeping anyway", max_wait_sec);
+    } else {
+        ESP_LOGI(TAG, "OTA finished, sleep may proceed");
+    }
+}
+
 static esp_err_t ota_check_periodic_callback(void)
 {
     ESP_LOGI(TAG, "Periodic OTA check triggered");

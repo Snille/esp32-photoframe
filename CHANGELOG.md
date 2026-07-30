@@ -10,6 +10,22 @@ DFRobot FireBeetle) on **ESP-IDF v6.0** from a single `v<version>` tag; each
 release carries every board's flashable factory bin and drives the web flasher.
 (The old manual `firebeetle-v<version>` line is retired.)
 
+## 2.17.2
+
+### Fixed
+- **OTA can finally finish on a frame that deep-sleeps between rotations.** The
+  scheduled post-rotation sleep fired regardless of an install in flight, so a
+  download that had just started was cut off mid-flash — reproducibly around 6%,
+  every attempt, leaving the frame on its old version with the update still
+  showing as "available". (The download loop already keeps resetting the *idle*
+  timer, so the idle path was never the problem; it was the scheduled sleep,
+  which nothing was holding back.) The rotation flow now waits for any running
+  check/download/install to finish before sleeping, capped at
+  `OTA_SLEEP_DEFER_MAX_SEC` (300 s) so a wedged update can't keep the frame awake
+  indefinitely — the install reboots the frame itself on success. Until a frame
+  runs this version, an OTA onto it needs deep sleep temporarily disabled, USB
+  power, or a USB flash.
+
 ## 2.17.1
 
 ### Fixed

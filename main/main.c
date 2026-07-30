@@ -298,6 +298,15 @@ void deep_sleep_wake_main(wakeup_source_t wakeup_src)
         ESP_LOGI(TAG, "HTTP server window closed");
     }
 
+    // An OTA may have started during this wake — the daily check found one and
+    // auto-update installed it, or the server triggered an update. It writes
+    // ~3 MB and reboots the frame itself. Sleeping on schedule regardless cuts
+    // it off mid-flash, which presents as a download that silently dies a few
+    // percent in, every single time, on any frame that deep-sleeps between
+    // rotations. The download loop already fends off the idle timer; this is the
+    // scheduled sleep, which nothing was holding back.
+    ota_wait_while_busy(OTA_SLEEP_DEFER_MAX_SEC);
+
     // Go back to sleep (offline notification sent inside power_manager_enter_sleep)
     ESP_LOGI(TAG, "Auto-rotate complete, going back to sleep");
     power_manager_enter_sleep();
