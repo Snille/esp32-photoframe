@@ -10,6 +10,47 @@ DFRobot FireBeetle) on **ESP-IDF v6.0** from a single `v<version>` tag; each
 release carries every board's flashable factory bin and drives the web flasher.
 (The old manual `firebeetle-v<version>` line is retired.)
 
+## 2.18.0
+
+### Added
+- **The server can now tell the frame that firmware is available**, on the image
+  response it is already fetching. Until now every frame asked GitHub itself on a
+  24-hour timer: a TLS handshake and a multi-hundred-KB JSON parse per frame per
+  day, up to a day of latency before a release was noticed, and an
+  unauthenticated rate limit (60/hour per IP) shared by every frame behind the
+  same NAT. The frame installs from the offered URL, subject to the same battery
+  gate as before — the server cannot know your charge, so that decision stays on
+  the device. The offer is acted on *after* the new image is on the panel, so a
+  ~3 MB download never competes with the panel buffer, and the sleep-defer added
+  in 2.17.2 holds the frame up for the install. Only when **Auto update** is on:
+  a server suggesting an update must not override the choice not to have
+  unattended ones. Needs server **v1.50.0**; with an older server, or none, the
+  frame's own daily check works exactly as before.
+- **Firmware can optionally be downloaded from your own server** instead of
+  GitHub, selected per frame on the server. The frame simply downloads whatever
+  URL it is handed, so this needs no setting on the device. Pointed at the
+  server, a frame needs no internet access at all — useful on a restricted IoT
+  VLAN — and the fleet costs one download instead of one per frame. That route
+  is authenticated with the same device token as the image route; the token is
+  deliberately **not** sent to GitHub links, which are public and would gain
+  nothing from it while handing the token to a third party.
+- **Battery calibration now survives a re-flash.** The per-unit voltage scale is
+  measured against a multimeter and lived only in NVS, so a merged factory image
+  erased it permanently — recovering it meant charging to full and measuring
+  again. The frame now reports it on every check-in (`X-Battery-Cal-Scale`) so
+  the server can mirror it, and adopts it back when the server offers it. The
+  frame stays the source of truth: a frame reporting its own calibration is never
+  overwritten, and the value is only handed back to one that has come up on the
+  factory default.
+
+### Changed
+- **The release-list request asks for 5 releases instead of 10.** The old request
+  pulled well over 250 KB — every release carries a dozen assets — and grew with
+  each release, while the check only needs the newest one carrying this board's
+  image. Five leaves room for a release cut without some board's binary. This
+  matters most for frames running without a server, which still depend on that
+  path entirely.
+
 ## 2.17.4
 
 ### Fixed
