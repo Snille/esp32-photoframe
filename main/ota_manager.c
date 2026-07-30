@@ -654,6 +654,37 @@ esp_err_t ota_check_for_update(bool *update_available_out, int timeout)
     return ESP_OK;
 }
 
+esp_err_t ota_install_from_url(const char *url, const char *version)
+{
+    if (!url || !url[0] || !ota_is_supported()) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (ota_is_busy()) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    // The same battery gate the daily self-install uses. The server has no idea
+    // what our charge is, so the decision stays here where it can be answered
+    // honestly — a flat frame must not start a flash it can't finish.
+    const char *reason = NULL;
+    if (!auto_update_battery_gate_ok(&reason)) {
+        ESP_LOGI(TAG, "Server offered %s but skipping install (%s)", version ? version : "?",
+                 reason ? reason : "battery gate");
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    snprintf(firmware_url, sizeof(firmware_url), "%s", url);
+    if (version && ota_status_mutex && xSemaphoreTake(ota_status_mutex, portMAX_DELAY) == pdTRUE) {
+        snprintf(ota_status.latest_version, sizeof(ota_status.latest_version), "%s", version);
+        xSemaphoreGive(ota_status_mutex);
+    }
+    update_available = true;
+
+    ESP_LOGI(TAG, "Installing %s offered by the server (%s)", version ? version : "?", reason);
+    xTaskCreate(&ota_update_task, "ota_update_task", 12288, NULL, 5, NULL);
+    return ESP_OK;
+}
+
 esp_err_t ota_start_update(void)
 {
     if (!update_available) {

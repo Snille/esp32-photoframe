@@ -441,6 +441,37 @@ static void apply_remote_config_payload(const char *config_payload_buffer)
     }
 }
 
+// A firmware offer the server made on the last image response. Held here rather
+// than acted on inside the fetch: the install is a ~3 MB download and the fetch
+// still owns the panel buffer, so the wake flow starts it once the image is
+// drawn. Cleared by whoever takes it, so a single offer installs once.
+static char pending_fw_version[FW_VERSION_MAX_LEN] = {0};
+static char pending_fw_url[FW_URL_MAX_LEN] = {0};
+
+void utils_set_pending_firmware_notice(const char *version, const char *url)
+{
+    snprintf(pending_fw_version, sizeof(pending_fw_version), "%s", version);
+    snprintf(pending_fw_url, sizeof(pending_fw_url), "%s", url);
+    ESP_LOGI(TAG, "Server offers firmware %s", version);
+}
+
+bool utils_take_pending_firmware_notice(char *version, size_t version_len, char *url,
+                                        size_t url_len)
+{
+    if (pending_fw_version[0] == '\0' || pending_fw_url[0] == '\0') {
+        return false;
+    }
+    if (version && version_len) {
+        snprintf(version, version_len, "%s", pending_fw_version);
+    }
+    if (url && url_len) {
+        snprintf(url, url_len, "%s", pending_fw_url);
+    }
+    pending_fw_version[0] = '\0';
+    pending_fw_url[0] = '\0';
+    return true;
+}
+
 // Context for HTTP event handler
 typedef struct {
     FILE *file;
@@ -449,6 +480,12 @@ typedef struct {
     char *thumbnail_url;   // Optional thumbnail URL from X-Thumbnail-URL header
     char *config_payload;  // Optional config JSON from X-Config-Payload header
     char *etag;            // Optional ETag buffer (HTTP_ETAG_MAX_LEN bytes) for 304 caching
+    // The server tells us about firmware and calibration on the image response,
+    // so we don't have to ask GitHub ourselves and don't lose a calibration a
+    // re-flash wiped. Both are advisory: absent headers change nothing.
+    char *fw_update_version;  // X-Firmware-Update: release tag the server offers
+    char *fw_update_url;      // X-Firmware-Url: that board's .bin
+    float cal_restore;        // X-Battery-Cal-Restore: scale to adopt (0 = none)
     // Streaming EPDGZ inflate (avoids writing compressed data to MemFS)
     z_stream inflate_strm;
     bool inflate_candidate;      // true when headers suggest EPDGZ may be streamed
@@ -565,6 +602,21 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt)
             }
             post_rotate_wait_sec = wait;
             ESP_LOGI(TAG, "Server requested post-rotate wait: %d s", wait);
+        } else if (strcasecmp(evt->header_key, "X-Firmware-Update") == 0) {
+            if (ctx->fw_update_version && strlen(evt->header_value) > 0) {
+                strncpy(ctx->fw_update_version, evt->header_value, FW_VERSION_MAX_LEN - 1);
+                ctx->fw_update_version[FW_VERSION_MAX_LEN - 1] = '\0';
+            }
+        } else if (strcasecmp(evt->header_key, "X-Firmware-Url") == 0) {
+            if (ctx->fw_update_url && strlen(evt->header_value) > 0) {
+                strncpy(ctx->fw_update_url, evt->header_value, FW_URL_MAX_LEN - 1);
+                ctx->fw_update_url[FW_URL_MAX_LEN - 1] = '\0';
+            }
+        } else if (strcasecmp(evt->header_key, "X-Battery-Cal-Restore") == 0) {
+            float scale = strtof(evt->header_value, NULL);
+            if (scale > 0.0f) {
+                ctx->cal_restore = scale;
+            }
         } else if (strcasecmp(evt->header_key, "ETag") == 0) {
             if (ctx->etag) {
                 strncpy(ctx->etag, evt->header_value, HTTP_ETAG_MAX_LEN - 1);
@@ -607,6 +659,11 @@ esp_err_t fetch_and_save_image_from_url(const char *url, char *saved_image_path,
 
     char *config_payload_buffer = NULL;
     char *etag_buffer = NULL;
+    // Server-side notices captured from the response headers; acted on after a
+    // successful fetch so a failed attempt never triggers an install.
+    char *fw_update_version = NULL;
+    char *fw_update_url = NULL;
+    float cal_restore = 0.0f;
 
     // Inflate result captured from inside the retry loop
     bool inflate_streamed = false;
@@ -622,13 +679,18 @@ esp_err_t fetch_and_save_image_from_url(const char *url, char *saved_image_path,
     content_type = calloc(128, 1);
     config_payload_buffer = calloc(2048, 1);
     etag_buffer = calloc(HTTP_ETAG_MAX_LEN, 1);
+    fw_update_version = calloc(FW_VERSION_MAX_LEN, 1);
+    fw_update_url = calloc(FW_URL_MAX_LEN, 1);
 
-    if (!content_type || !thumbnail_url_buffer || !config_payload_buffer || !etag_buffer) {
+    if (!content_type || !thumbnail_url_buffer || !config_payload_buffer || !etag_buffer ||
+        !fw_update_version || !fw_update_url) {
         ESP_LOGE(TAG, "Failed to allocate memory for download context");
         free(content_type);
         free(thumbnail_url_buffer);
         free(config_payload_buffer);
         free(etag_buffer);
+        free(fw_update_version);
+        free(fw_update_url);
         return ESP_FAIL;
     }
 
@@ -649,6 +711,9 @@ esp_err_t fetch_and_save_image_from_url(const char *url, char *saved_image_path,
         memset(content_type, 0, 128);
         memset(config_payload_buffer, 0, 2048);
         memset(etag_buffer, 0, HTTP_ETAG_MAX_LEN);
+        memset(fw_update_version, 0, FW_VERSION_MAX_LEN);
+        memset(fw_update_url, 0, FW_URL_MAX_LEN);
+        cal_restore = 0.0f;
 
         // Pre-wire the EPD buffer as the streaming inflate output target.
         // The event handler will start streaming inflate on Content-Type: application/octet-stream.
@@ -661,6 +726,9 @@ esp_err_t fetch_and_save_image_from_url(const char *url, char *saved_image_path,
                                   .thumbnail_url = thumbnail_url_buffer,
                                   .config_payload = config_payload_buffer,
                                   .etag = etag_buffer,
+                                  .fw_update_version = fw_update_version,
+                                  .fw_update_url = fw_update_url,
+                                  .cal_restore = 0.0f,
                                   .inflate_candidate = false,
                                   .inflate_checked = false,
                                   .inflate_active = false,
@@ -931,6 +999,19 @@ esp_err_t fetch_and_save_image_from_url(const char *url, char *saved_image_path,
             esp_http_client_set_header(client, "X-Battery-Voltage", batt_mv_str);
         }
 
+        // Report our per-unit voltage calibration so the server can mirror it.
+        // The scale is measured against a multimeter and lives nowhere but our
+        // NVS, so a merged-image flash wipes it for good — with the server
+        // holding a copy it can hand it back instead (X-Battery-Cal-Restore).
+        if (board_hal_supports_battery_cal()) {
+            float cal_scale = board_hal_get_battery_cal_scale();
+            if (cal_scale > 0.0f) {
+                char cal_str[16];
+                snprintf(cal_str, sizeof(cal_str), "%.6f", cal_scale);
+                esp_http_client_set_header(client, "X-Battery-Cal-Scale", cal_str);
+            }
+        }
+
         // Mirror which GPIO (if any) an external battery voltage divider is
         // wired to, so the server can display it in the device list. Only
         // meaningful on boards with a user-configurable pin (see
@@ -965,6 +1046,7 @@ esp_err_t fetch_and_save_image_from_url(const char *url, char *saved_image_path,
         content_length = esp_http_client_get_content_length(client);
         total_downloaded = ctx.total_read;
         content_type = ctx.content_type;
+        cal_restore = ctx.cal_restore;
 
         // Finish inflate stream if active, capture result.
         //
@@ -1078,6 +1160,28 @@ esp_err_t fetch_and_save_image_from_url(const char *url, char *saved_image_path,
     // dropped it) so the next request can send If-None-Match.
     config_manager_set_image_etag(etag_buffer);
     free(etag_buffer);
+
+    // The server offered our calibration back, which means it saw us reporting
+    // the factory default while it held a real value — i.e. our NVS was wiped.
+    // Cheap to apply here and now; it only touches NVS.
+    if (cal_restore > 0.0f && board_hal_supports_battery_cal()) {
+        esp_err_t cal_err = board_hal_set_battery_cal_scale(cal_restore);
+        if (cal_err == ESP_OK) {
+            config_manager_set_battery_cal_scale(cal_restore);
+            ESP_LOGI(TAG, "Restored battery calibration %.4f from server", cal_restore);
+        } else {
+            ESP_LOGW(TAG, "Server offered calibration %.4f but the board rejected it: %s",
+                     cal_restore, esp_err_to_name(cal_err));
+        }
+    }
+
+    // Stash any firmware offer rather than acting on it here: we still hold the
+    // panel buffer and are about to draw. The wake flow installs it after the
+    // image is on screen, where the existing sleep-defer keeps the frame up for
+    // the duration.
+    if (fw_update_version[0] != '\0' && fw_update_url[0] != '\0') {
+        utils_set_pending_firmware_notice(fw_update_version, fw_update_url);
+    }
 
     // --- Raw EPD streaming path ---
     // The server can send uncompressed 4bpp panel bytes for SRAM-only boards.

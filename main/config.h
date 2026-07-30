@@ -67,6 +67,12 @@ typedef enum {
 
 #define IMAGE_ROTATE_INTERVAL_SEC 3600
 
+// Buffers for the server's firmware notice on the image response
+// (X-Firmware-Update / X-Firmware-Url). The URL is a GitHub release asset link,
+// which is comfortably under 256 bytes.
+#define FW_VERSION_MAX_LEN 32
+#define FW_URL_MAX_LEN 256
+
 // Seconds to shift clock-aligned wake-ups by. Lets several frames sharing a
 // rotation interval stagger their pulls instead of all hitting the server (and
 // the WiFi) on the same clock boundary. 0 = wake exactly on the boundary.
@@ -175,7 +181,15 @@ typedef enum {
 // newest release always carries every board's asset, so the board-specific
 // binary is near the top and the check finishes well within its timeout. See
 // ota_check_for_update()'s timeout handling.
-#define GITHUB_API_URL "https://api.github.com/repos/Snille/esp32-photoframe/releases?per_page=10"
+// Only the newest few releases matter: the check walks them newest-first and
+// stops at the first one carrying THIS board's asset. Asking for ten pulled well
+// over 250 KB of JSON — every release carries a dozen assets — which is more than
+// the parser's own ceiling and grows with each release. Five leaves room for a
+// release cut without some board's binary while staying comfortably inside it.
+// A frame paired with a server usually never gets here at all: the server tells
+// it about updates on the image response (X-Firmware-Update). This path is the
+// fallback for standalone frames and for servers too old to send it.
+#define GITHUB_API_URL "https://api.github.com/repos/Snille/esp32-photoframe/releases?per_page=5"
 #define OTA_CHECK_INTERVAL_MS (24 * 60 * 60 * 1000)  // 24 hours
 
 // How long a scheduled deep sleep waits for an in-flight OTA to finish. A ~3 MB

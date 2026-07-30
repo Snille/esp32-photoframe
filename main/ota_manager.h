@@ -27,6 +27,11 @@ typedef struct {
 esp_err_t ota_manager_init(void);
 esp_err_t ota_check_for_update(bool *update_available, int timeout);
 esp_err_t ota_start_update(void);
+
+// Install firmware the SERVER pointed us at (X-Firmware-Update / X-Firmware-Url
+// on an image response), skipping our own GitHub lookup entirely. Subject to the
+// same battery gate as the daily self-install — the server can't know our charge.
+esp_err_t ota_install_from_url(const char *url, const char *version);
 void ota_get_status(ota_status_t *status);
 const char *ota_get_current_version(void);
 bool ota_should_check_daily(void);

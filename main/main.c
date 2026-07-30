@@ -298,6 +298,20 @@ void deep_sleep_wake_main(wakeup_source_t wakeup_src)
         ESP_LOGI(TAG, "HTTP server window closed");
     }
 
+    // Act on a firmware offer the server made on this rotation's image response.
+    // Doing it here rather than mid-fetch means the new image is already on the
+    // panel, and the sleep-defer below then holds the frame up for the install.
+    // Only when the user has asked for unattended updates: a server suggesting an
+    // update must not override that choice.
+    if (config_manager_get_auto_update()) {
+        char offered_version[FW_VERSION_MAX_LEN];
+        char offered_url[FW_URL_MAX_LEN];
+        if (utils_take_pending_firmware_notice(offered_version, sizeof(offered_version),
+                                               offered_url, sizeof(offered_url))) {
+            ota_install_from_url(offered_url, offered_version);
+        }
+    }
+
     // An OTA may have started during this wake — the daily check found one and
     // auto-update installed it, or the server triggered an update. It writes
     // ~3 MB and reboots the frame itself. Sleeping on schedule regardless cuts

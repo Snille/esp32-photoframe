@@ -2,6 +2,7 @@
 #define UTILS_H
 
 #include <stdbool.h>
+#include <stddef.h>
 
 #include "cJSON.h"
 #include "esp_err.h"
@@ -17,6 +18,14 @@ esp_err_t apply_config_from_json(cJSON *root);
 // Get/set the last image fetch error (transient, for UI display)
 void utils_set_last_fetch_error(const char *error);
 const char *utils_get_last_fetch_error(void);
+
+// Firmware offered by the server on the last image response (X-Firmware-Update /
+// X-Firmware-Url). Recorded during the fetch and acted on afterwards, once the
+// image is drawn — the install is a large download and the fetch still owns the
+// panel buffer. Taking the notice clears it, so one offer installs once.
+void utils_set_pending_firmware_notice(const char *version, const char *url);
+bool utils_take_pending_firmware_notice(char *version, size_t version_len, char *url,
+                                        size_t url_len);
 
 // Seconds the server asked us to stay awake after the last image fetch (via the
 // X-Post-Rotate-Wait-Sec response header) so it can pull our config. 0 if none.
