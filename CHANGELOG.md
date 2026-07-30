@@ -10,6 +10,21 @@ DFRobot FireBeetle) on **ESP-IDF v6.0** from a single `v<version>` tag; each
 release carries every board's flashable factory bin and drives the web flasher.
 (The old manual `firebeetle-v<version>` line is retired.)
 
+## 2.17.4
+
+### Fixed
+- **A frame with clock-aligned rotation no longer wakes far too often before its
+  clock is set.** Aligning needs a real time-of-day, and an ESP32 that has not
+  managed an SNTP sync yet sits in 1970 — seconds-since-midnight reads ~0. With a
+  rotation offset that is *before* the day's first offset slot, so the frame
+  targeted that slot and slept only `rotate_offset` seconds: a frame on a
+  5-minute interval with a 2-minute offset woke every 2 minutes, burning ~15
+  percentage points of battery in a morning. Without an offset the same path
+  happened to land a full interval out, which is why it went unnoticed until
+  offsets existed. Alignment is now skipped entirely until the clock is
+  plausibly set (year >= 2020), falling back to a plain interval wait; the first
+  wake after a successful time sync snaps back onto the grid.
+
 ## 2.17.3
 
 ### Fixed

@@ -349,6 +349,45 @@ TEST_F(CalculateNextWakeupIntervalTest, OffsetRespectedAtEndOfSleepWindow)
     EXPECT_EQ(27300, result) << "Should wake at 07:05, on the offset grid";
 }
 
+// --- Unset clock (no SNTP sync yet) ---
+
+TEST_F(CalculateNextWakeupIntervalTest, UnsetClockWithOffsetDoesNotWakeEarly)
+{
+    config.enabled = false;
+    SetMockTime(0, 0, 0);
+    timeinfo.tm_year = 70;  // 1970: the clock has never been set
+
+    // Seconds-of-day reads 0, which is before the day's first offset slot.
+    // Aligning would target that slot and sleep only `offset` seconds — a frame
+    // on a 5-minute interval waking every 2 minutes, flattening its battery.
+    int result = calculate_next_wakeup_interval(&timeinfo, 300, true, 120, &config);
+
+    EXPECT_EQ(300, result) << "Should fall back to a plain interval, not the 120s slot";
+}
+
+TEST_F(CalculateNextWakeupIntervalTest, UnsetClockWithoutOffsetAlsoUsesPlainInterval)
+{
+    config.enabled = false;
+    SetMockTime(0, 0, 0);
+    timeinfo.tm_year = 70;
+
+    int result = calculate_next_wakeup_interval(&timeinfo, 900, true, 0, &config);
+
+    EXPECT_EQ(900, result) << "No grid to align to before the clock is set";
+}
+
+TEST_F(CalculateNextWakeupIntervalTest, ClockSetRestoresAlignment)
+{
+    config.enabled = false;
+    SetMockTime(10, 20, 0);  // SetUp already puts tm_year at 2026
+
+    // Same call as above but with a real clock: the grid applies again, so the
+    // frame snaps back on its first wake after a successful time sync.
+    int result = calculate_next_wakeup_interval(&timeinfo, 900, true, 300, &config);
+
+    EXPECT_EQ(900, result) << "Should wake at 10:35 on the offset grid";
+}
+
 int main(int argc, char **argv)
 {
     ::testing::InitGoogleTest(&argc, argv);

@@ -1,5 +1,13 @@
 #include "testable_utils.h"
 
+// True when the clock has plausibly been set (SNTP synced, or restored from the
+// RTC). An unsynced ESP32 sits in 1970, where "seconds since midnight" is
+// meaningless — and so is any wake grid derived from it.
+static bool clock_is_set(const struct tm *timeinfo)
+{
+    return (timeinfo->tm_year + 1900) >= 2020;
+}
+
 // Normalize a configured offset into [0, rotate_interval). A negative or
 // oversized value is a config mistake, not a reason to compute a bogus wake.
 static int normalize_offset(int rotate_offset, int rotate_interval)
@@ -22,7 +30,17 @@ int calculate_next_wakeup_interval(const struct tm *timeinfo, int rotate_interva
     int seconds_until_next;
     int offset = normalize_offset(rotate_offset, rotate_interval);
 
-    if (aligned) {
+    // Aligning to a clock that has not been set produces a wake time derived
+    // from 1970, which is arbitrary — and with an offset it is actively harmful:
+    // seconds-of-day reads ~0, which is *before* the day's first offset slot, so
+    // the frame targets that slot and sleeps only `offset` seconds. Observed as a
+    // frame on a 5-minute interval waking every 2 minutes with a 2-minute offset,
+    // draining its battery. Without an offset the same path happened to land a
+    // whole interval out, which is why it went unnoticed. Fall back to a plain
+    // interval wait; the first wake after the clock is set snaps back to the grid.
+    bool align_now = aligned && clock_is_set(timeinfo);
+
+    if (align_now) {
         // The alignment grid is shifted by `offset` seconds, so several frames
         // sharing an interval can keep clock-aligned wakes without all hitting
         // the server (and the WiFi) in the same second. offset == 0 reproduces
@@ -85,7 +103,7 @@ int calculate_next_wakeup_interval(const struct tm *timeinfo, int rotate_interva
 
     // Wake-up would be in sleep schedule, calculate next wake-up time at or after schedule ends.
     long long next_wake_seconds_of_day;
-    if (aligned) {
+    if (align_now) {
         // Find the first aligned time >= sleep_end (sleep_end is exclusive),
         // on the same offset-shifted grid used above.
         long long relative_end = (long long) sleep_end_seconds - offset;
