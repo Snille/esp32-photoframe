@@ -10,6 +10,22 @@ DFRobot FireBeetle) on **ESP-IDF v6.0** from a single `v<version>` tag; each
 release carries every board's flashable factory bin and drives the web flasher.
 (The old manual `firebeetle-v<version>` line is retired.)
 
+## 2.17.3
+
+### Fixed
+- **No more phantom "could not reach device" config-sync failures.** v2.17.1 made
+  the frame adopt the server's timestamp when a config arrives in the image
+  response (`X-Config-Payload`), but a config pushed *directly* to an awake frame
+  goes to `/api/config` instead, and that path still stamped the frame with the
+  moment it applied the change. The frame then reported a config newer than the
+  one it had just been handed, so the server spent every following cycle trying
+  to pull config *from* the frame — failing each time with "could not reach
+  device ... within 20s" once the frame was asleep again. Both push paths now
+  behave the same way. A save made on the frame's own web UI carries no server
+  timestamp and still stamps as "changed here", which is what makes the server
+  pull a genuine local edit. Requires server v1.49.1+ to send the field on the
+  direct path; harmless without it.
+
 ## 2.17.2
 
 ### Fixed

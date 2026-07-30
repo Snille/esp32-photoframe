@@ -1942,6 +1942,15 @@ static esp_err_t config_handler(httpd_req_t *req)
         }
 
         esp_err_t apply_result = apply_config_from_json(root);
+
+        // Read before root is freed: a save that carries `config_last_updated`
+        // came from the server pushing its config down, and we adopt that stamp
+        // instead of inventing a newer one (see below).
+        cJSON *pushed_ts_item = cJSON_GetObjectItem(root, "config_last_updated");
+        int64_t pushed_ts = (pushed_ts_item && cJSON_IsNumber(pushed_ts_item))
+                                ? (int64_t) cJSON_GetNumberValue(pushed_ts_item)
+                                : 0;
+
         cJSON_Delete(root);
 
         if (apply_result != ESP_OK) {
@@ -1970,8 +1979,21 @@ static esp_err_t config_handler(httpd_req_t *req)
             return ESP_FAIL;
         }
 
-        // Update config timestamp for remote sync
-        config_manager_touch_config();
+        // Update config timestamp for remote sync.
+        //
+        // Adopting the server's stamp (when it sent one) keeps the two sides
+        // agreeing on who is authoritative: stamping ourselves with "now" would
+        // make us report a config newer than the one we were just handed, so the
+        // server would spend every following cycle trying to pull from us instead
+        // — logging a "could not reach device" failure each time, because we are
+        // asleep again by then. A save from this frame's own web UI carries no
+        // such field and still stamps as "changed here", which is exactly what
+        // makes the server pull a genuine local edit.
+        if (pushed_ts > 0) {
+            config_manager_set_config_last_updated(pushed_ts);
+        } else {
+            config_manager_touch_config();
+        }
 
         cJSON *response = cJSON_CreateObject();
         cJSON_AddStringToObject(response, "status", "success");
