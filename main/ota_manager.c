@@ -451,6 +451,28 @@ static void ota_check_task(void *pvParameter)
     vTaskDelete(NULL);
 }
 
+// Authorization value for a server-hosted firmware download, prepared just
+// before the OTA starts. File-scope because esp_https_ota's init callback takes
+// no user data.
+static char ota_auth_header[320] = "";
+
+// GitHub release assets are public and redirect to a CDN host; sending our
+// device token there would leak it to a third party for no benefit.
+static bool url_is_github(const char *url)
+{
+    return strstr(url, "://github.com/") != NULL ||
+           strstr(url, "://objects.githubusercontent.com/") != NULL ||
+           strstr(url, ".githubusercontent.com/") != NULL;
+}
+
+static esp_err_t ota_http_client_init_cb(esp_http_client_handle_t http_client)
+{
+    if (ota_auth_header[0] != '\0') {
+        return esp_http_client_set_header(http_client, "Authorization", ota_auth_header);
+    }
+    return ESP_OK;
+}
+
 static void ota_update_task(void *pvParameter)
 {
     ESP_LOGI(TAG, "Starting OTA update...");
@@ -473,8 +495,20 @@ static void ota_update_task(void *pvParameter)
         .buffer_size_tx = 4096,
     };
 
+    // When the server hands us the image itself (X-Firmware-Url pointing at our
+    // own photoframe server rather than at GitHub), that route sits behind the
+    // same device-token auth as the image route — so the download needs the
+    // token too. GitHub links ignore it. Without this the fetch comes back 401
+    // and the install silently falls back to the frame's own GitHub check.
+    ota_auth_header[0] = '\0';
+    const char *ota_token = config_manager_get_access_token();
+    if (ota_token && ota_token[0] && !url_is_github(firmware_url)) {
+        snprintf(ota_auth_header, sizeof(ota_auth_header), "Bearer %s", ota_token);
+    }
+
     esp_https_ota_config_t ota_config = {
         .http_config = &config,
+        .http_client_init_cb = ota_http_client_init_cb,
     };
 
     esp_https_ota_handle_t https_ota_handle = NULL;
