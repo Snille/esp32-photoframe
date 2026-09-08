@@ -162,6 +162,11 @@ esp_err_t apply_config_from_json(cJSON *root)
                     config_manager_set_wifi_password(new_password);
                 }
                 ESP_LOGI(TAG, "Successfully connected and saved WiFi credentials");
+                // The browser that sent this request is on the old network and
+                // cannot be answered any more. Draw the info screen so the new
+                // SSID and IP are readable on the panel itself.
+                ESP_LOGI(TAG, "Requesting info screen redraw so the new IP is readable");
+                power_manager_request_info_screen();
             } else {
                 ESP_LOGW(TAG, "Failed to connect to new WiFi, reverting to previous credentials");
                 wifi_manager_connect(current_ssid, config_manager_get_wifi_password());

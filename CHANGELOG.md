@@ -10,6 +10,35 @@ DFRobot FireBeetle) on **ESP-IDF v6.0** from a single `v<version>` tag; each
 release carries every board's flashable factory bin and drives the web flasher.
 (The old manual `firebeetle-v<version>` line is retired.)
 
+## 2.18.1
+
+### Fixed
+- **Changing the Wi-Fi network from the frame's own web UI no longer leaves the
+  Save button spinning forever.** The save path caught the expected connection
+  reset — the frame moves network, so the browser's socket dies mid-request —
+  and then read an error variable that did not exist under that name. That threw
+  inside the catch block, the save never returned, and the spinner ran until the
+  page was reloaded. The button now always stops, and the save is additionally
+  wrapped so no future throw can hang it either.
+- **The frame now redraws its info screen on the panel after a successful Wi-Fi
+  change.** A frame that joins another network gets a new IP, and the page that
+  asked for the change is still pointed at the old one, so the browser can never
+  report the result. The panel shows name, IP, SSID, server and version — the
+  only place the new address can still be read. The redraw is queued onto the
+  rotation task rather than run on the web server task, which does not have the
+  stack for a panel refresh.
+- **The "did it work?" wait after a Wi-Fi change is much shorter** — about 18
+  seconds instead of about 50. The retry loop only ever succeeds when the frame
+  *failed* to join and reverted to the old network, where it answers on the same
+  address within a few seconds; a successful move is unreachable from that page
+  no matter how long the loop runs. The message now says to read the new IP off
+  the panel.
+
+### Notes
+- Only 2.4 GHz networks can be joined. Every ESP32 variant this firmware runs on
+  has a 2.4 GHz-only radio, so a 5 GHz-only SSID is invisible to the frame and no
+  firmware change can alter that. The network must also offer at least WPA2.
+
 ## 2.18.0
 
 ### Added

@@ -408,13 +408,24 @@ async function performImport() {
 async function saveSettings() {
   saving.value = true;
 
-  // Save both device settings and processing settings
-  const [deviceResult, processingSuccess] = await Promise.all([
-    settingsStore.saveDeviceSettings(),
-    settingsStore.saveSettings(),
-  ]);
-
-  saving.value = false;
+  // Save both device settings and processing settings. Wrapped so an
+  // unexpected throw can never leave the button spinning forever - a WiFi
+  // change tears down this page's connection, which is exactly when a throw
+  // is most likely.
+  let deviceResult;
+  let processingSuccess;
+  try {
+    [deviceResult, processingSuccess] = await Promise.all([
+      settingsStore.saveDeviceSettings(),
+      settingsStore.saveSettings(),
+    ]);
+  } catch (error) {
+    console.error("Save failed:", error);
+    deviceResult = { success: false, message: `Failed to save settings: ${error.message}` };
+    processingSuccess = false;
+  } finally {
+    saving.value = false;
+  }
 
   if (deviceResult.success && processingSuccess) {
     saveSuccess.value = true;

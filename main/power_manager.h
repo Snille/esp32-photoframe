@@ -30,4 +30,10 @@ void power_manager_reset_rotate_timer(void);
 wakeup_source_t power_manager_get_wakeup_source(void);
 void power_manager_set_deep_sleep_enabled(bool enabled);
 
+/**
+ * Queue a redraw of the info screen on the e-paper panel.
+ * Safe to call from small-stack tasks; the redraw runs on the rotation task.
+ */
+void power_manager_request_info_screen(void);
+
 #endif

@@ -339,7 +339,7 @@ export const useSettingsStore = defineStore("settings", () => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(changedFields),
         });
-      } catch (_error) {
+      } catch (error) {
         // Expected - connection will reset when WiFi switches
         console.log("Connection reset during WiFi change (expected):", error.message);
       }
@@ -347,9 +347,14 @@ export const useSettingsStore = defineStore("settings", () => {
       // Wait for device to switch networks
       await new Promise((resolve) => setTimeout(resolve, 2000));
 
-      // Retry logic to check if device is back online
-      const maxRetries = 10;
-      const retryDelay = 2000; // 2 seconds
+      // Retry logic to check if device is back online. Kept short on purpose:
+      // this only ever succeeds when the frame FAILED to join and reverted to
+      // the old network, where it answers on the same address within seconds.
+      // A successful move puts the frame on a new IP that this page cannot
+      // reach at all, so a long loop just makes the button spin for a minute
+      // before saying the same thing.
+      const maxRetries = 4;
+      const retryDelay = 1500;
 
       for (let i = 0; i < maxRetries; i++) {
         try {
@@ -388,10 +393,18 @@ export const useSettingsStore = defineStore("settings", () => {
         }
       }
 
-      // If we get here, device didn't come back online
+      // If we get here the frame never answered on this address again. That is
+      // the normal outcome of a *successful* move to another network: the frame
+      // gets a new IP, and this page is still pointed at the old one. A failed
+      // change looks different - the frame reverts, comes back here, and is
+      // reported above. So report this as probable success and send the user to
+      // the panel, which redraws the info screen with the new SSID and IP.
       return {
         success: false,
-        message: "WiFi changed but device did not reconnect. Please check your network settings.",
+        message:
+          `Frame is no longer reachable at this address. If it joined "${targetSsid}" it now has ` +
+          "a new IP - the info screen on the panel shows it. If the panel did not change, the " +
+          "network was not joined; check that it is 2.4 GHz and WPA2 or WPA2/WPA3.",
       };
     }
 

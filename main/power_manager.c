@@ -251,6 +251,19 @@ static void dispatch_button_action(const char *action)
     }
 }
 
+// Ask for the info screen (name / IP / SSID / server / version) from any task.
+// Uses the same one-slot mailbox as the button actions so the redraw runs on
+// rotation_timer_task's 16 KB stack instead of the caller's. Called by the
+// config apply path after a successful WiFi change: the browser loses the
+// frame when it moves network, so the panel is the only place left to show
+// the new SSID and IP.
+void power_manager_request_info_screen(void)
+{
+    strncpy(pending_button_action_buf, "info_screen", sizeof(pending_button_action_buf) - 1);
+    pending_button_action_buf[sizeof(pending_button_action_buf) - 1] = '\0';
+    pending_button_action_ready = true;
+}
+
 // Detects button gestures on the wake key while the device is awake and runs
 // the configured action: short press (<2s), long press (2-5s), hold (>=5s).
 // Uses the same key that wakes the device (BOARD_HAL_WAKEUP_KEY, active-low
