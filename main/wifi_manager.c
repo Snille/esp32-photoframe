@@ -31,6 +31,15 @@ static void event_handler(void *arg, esp_event_base_t event_base, int32_t event_
 {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
         esp_wifi_connect();
+    } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_CONNECTED) {
+        // Bring up an IPv6 link-local address so mDNS can answer AAAA queries.
+        // Without one the responder stays silent on AAAA, and clients resolving
+        // <name>.local wait out their full resolver timeout (~5s per request)
+        // before falling back to the A record.
+        esp_netif_t *sta_netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+        if (sta_netif) {
+            esp_netif_create_ip6_linklocal(sta_netif);
+        }
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
         if (s_retry_num < 5) {
             esp_wifi_connect();
@@ -47,7 +56,34 @@ static void event_handler(void *arg, esp_event_base_t event_base, int32_t event_
         s_retry_num = 0;
         s_is_connected = true;
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
+    } else if (event_base == IP_EVENT && event_id == IP_EVENT_GOT_IP6) {
+        ip_event_got_ip6_t *event = (ip_event_got_ip6_t *) event_data;
+        ESP_LOGI(TAG, "got ip6:" IPV6STR, IPV62STR(event->ip6_info.ip));
     }
+}
+
+esp_err_t wifi_manager_set_performance_mode(bool enable)
+{
+    // Modem power save adds ~100ms+ of latency to every round trip, which
+    // throttles the web UI hard: bulk transfer speed is roughly one TCP send
+    // buffer (~5.7KB) per round trip, i.e. ~45KB/s at 130ms RTT. Full RX
+    // (WIFI_PS_NONE) costs ~60-70mA extra while the radio is up, so it is only
+    // enabled when someone may actually be using the UI — the policy lives in
+    // power_manager's sleep_timer_task.
+    static bool applied = false;
+    static bool current = false;
+    if (applied && current == enable) {
+        return ESP_OK;
+    }
+
+    esp_err_t err = esp_wifi_set_ps(enable ? WIFI_PS_NONE : WIFI_PS_MIN_MODEM);
+    if (err == ESP_OK) {
+        applied = true;
+        current = enable;
+        ESP_LOGI(TAG, "WiFi power save %s (%s mode)", enable ? "disabled" : "enabled",
+                 enable ? "performance" : "power-save");
+    }
+    return err;
 }
 
 esp_err_t wifi_manager_init(void)
@@ -76,6 +112,9 @@ esp_err_t wifi_manager_init(void)
                                                         &event_handler, NULL, &instance_any_id));
     ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP,
                                                         &event_handler, NULL, &instance_got_ip));
+    esp_event_handler_instance_t instance_got_ip6;
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_GOT_IP6, &event_handler,
+                                                        NULL, &instance_got_ip6));
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     // Don't start WiFi here - let wifi_manager_connect() or wifi_provisioning_start_ap() start it

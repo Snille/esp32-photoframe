@@ -10,6 +10,41 @@ DFRobot FireBeetle) on **ESP-IDF v6.0** from a single `v<version>` tag; each
 release carries every board's flashable factory bin and drives the web flasher.
 (The old manual `firebeetle-v<version>` line is retired.)
 
+## 2.19.0
+
+Two upstream fixes ported from
+[aitjcize/esp32-photoframe](https://github.com/aitjcize/esp32-photoframe),
+adapted to this fork rather than cherry-picked.
+
+### Changed
+- **The web UI is fast again when someone is actually looking at it.** Modem
+  power save adds 100 ms or more to every round trip, which throttles bulk
+  transfers to roughly one TCP send buffer (~5.7 KB) per round trip — about
+  45 KB/s at 130 ms RTT against an access point that keeps power-save clients in
+  deep doze. Full RX (`WIFI_PS_NONE`) fixes that but costs ~60–70 mA while the
+  radio is up, so it is now gated on someone plausibly being there: an
+  interactive wake on a deep-sleep frame (wake button or cold boot, both bounded
+  by the auto-sleep timeout), or external power present. Automated wakes — timer,
+  rotate, clear — keep power save, so battery life on the normal rotation path is
+  unchanged. The policy is re-evaluated once a second, so plugging or unplugging
+  USB takes effect live. Boards that cannot sense USB at all (XIAO EE02/EE04) simply
+  never take the USB branch, which is the battery-safe direction. (Upstream `3a687aa`.)
+
+### Fixed
+- **`<name>.local` resolves without a multi-second stall.** The frame brought up
+  no IPv6 link-local address, so its mDNS responder stayed silent on AAAA
+  queries and clients waited out the full resolver timeout (~5 s per request)
+  before falling back to the A record. The station interface now creates a link-local
+  address on connect and logs the resulting IPv6 address. (Upstream `15c429e`.)
+
+### Not taken
+- Upstream `dedaae2` reports USB presence as charging status on the XIAO
+  EE02/EE04. This fork deliberately removed that same heuristic in `811a49a`: the
+  USB-Serial/JTAG link state detects a USB *data host*, not a charger, defaults to
+  "connected" until the SOF monitor settles, and is unreliable under tickless idle,
+  so it produced a false charging bolt on battery. The server infers charge
+  direction from the battery-voltage trend instead.
+
 ## 2.18.1
 
 ### Fixed

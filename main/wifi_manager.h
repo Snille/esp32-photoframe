@@ -13,6 +13,10 @@
 #define WIFI_FAIL_BIT BIT1
 
 esp_err_t wifi_manager_init(void);
+// Toggle between full-RX performance (WIFI_PS_NONE, low latency / fast web UI)
+// and modem power save (WIFI_PS_MIN_MODEM). Idempotent; safe to call every
+// second. The policy for when to use which lives in power_manager.
+esp_err_t wifi_manager_set_performance_mode(bool enable);
 esp_err_t wifi_manager_connect(const char *ssid, const char *password);
 esp_err_t wifi_manager_disconnect(void);
 bool wifi_manager_is_connected(void);
