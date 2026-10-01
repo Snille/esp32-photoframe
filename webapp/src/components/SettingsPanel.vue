@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onUnmounted } from "vue";
 import { useSettingsStore, useAppStore } from "../stores";
 import PaletteCalibration from "./PaletteCalibration.vue";
 import ProcessingControls from "./ProcessingControls.vue";
+import { timezoneOptionsFor } from "../timezones";
 
 const settingsStore = useSettingsStore();
 const appStore = useAppStore();
@@ -46,56 +47,36 @@ const httpsUrlBlocked = computed(
 // Device time state
 const deviceTime = ref("");
 const syncingTime = ref(false);
-let deviceTimestamp = null; // Unix timestamp from device
-let localTimeOffset = 0; // Offset between device time and local time
+// The frame's own local wall-clock time ("YYYY-MM-DD HH:MM:SS" from /api/time,
+// already run through its TZ rules incl. DST), held as if it were UTC so it can
+// be ticked forward and formatted with toISOString() without the browser's zone.
+let deviceLocalSeconds = null;
+let localTimeOffset = 0; // Date.now() when deviceLocalSeconds was read
 let tickInterval = null;
 
-function updateDisplayTime() {
-  if (deviceTimestamp === null) return;
-  // Calculate current device time based on elapsed local time
-  const elapsed = Math.floor((Date.now() - localTimeOffset) / 1000);
-  const currentTimestamp = deviceTimestamp + elapsed;
+const timezoneItems = computed(() => timezoneOptionsFor(settingsStore.deviceSettings.timezone));
 
-  // Apply timezone offset for display
-  // We shift the timestamp by the offset so that toISOString() (which is UTC)
-  // displays the correct local time numbers.
-  const offsetHours = settingsStore.deviceSettings.timezoneOffset || 0;
-  const adjustedTimestamp = currentTimestamp + offsetHours * 3600;
-
-  const date = new Date(adjustedTimestamp * 1000);
-  // Format as YYYY-MM-DD HH:MM:SS
-  deviceTime.value = date.toISOString().slice(0, 19).replace("T", " ");
+function setDeviceTime(data) {
+  const parsed = Date.parse(`${String(data.time || "").replace(" ", "T")}Z`);
+  if (Number.isNaN(parsed)) return;
+  deviceLocalSeconds = Math.floor(parsed / 1000);
+  localTimeOffset = Date.now();
+  updateDisplayTime();
 }
 
-async function parseTimezone(timezoneStr) {
-  if (!timezoneStr) return;
-
-  // Posix format: UTC[+/-]H[:MM] (e.g., UTC-8 or UTC+5:30)
-  // Note: POSIX sign is inverted relative to ISO8601
-  let offset = 0;
-  const match = timezoneStr.match(/UTC([+-]?)(\d+)(?::(\d+))?/);
-  if (match) {
-    const sign = match[1] === "-" ? 1 : -1; // POSIX Inverted
-    const hours = parseInt(match[2]) || 0;
-    const minutes = parseInt(match[3]) || 0;
-    offset = sign * (hours + minutes / 60);
-
-    // Update store if different, to keep UI in sync
-    if (settingsStore.deviceSettings.timezoneOffset !== offset) {
-      settingsStore.deviceSettings.timezoneOffset = offset;
-    }
-  }
+function updateDisplayTime() {
+  if (deviceLocalSeconds === null) return;
+  const elapsed = Math.floor((Date.now() - localTimeOffset) / 1000);
+  const date = new Date((deviceLocalSeconds + elapsed) * 1000);
+  // Format as YYYY-MM-DD HH:MM:SS
+  deviceTime.value = date.toISOString().slice(0, 19).replace("T", " ");
 }
 
 async function fetchDeviceTime() {
   try {
     const response = await fetch("/api/time");
     if (response.ok) {
-      const data = await response.json();
-      deviceTimestamp = data.timestamp;
-      localTimeOffset = Date.now();
-      await parseTimezone(data.timezone);
-      updateDisplayTime();
+      setDeviceTime(await response.json());
     }
   } catch (error) {
     console.error("Failed to fetch device time:", error);
@@ -109,10 +90,7 @@ async function syncTime() {
     if (response.ok) {
       const data = await response.json();
       if (data.status === "success") {
-        deviceTimestamp = data.timestamp;
-        localTimeOffset = Date.now();
-        await parseTimezone(data.timezone);
-        updateDisplayTime();
+        setDeviceTime(data);
       }
     }
   } catch (error) {
@@ -585,15 +563,12 @@ async function enterFlashMode() {
                 </v-text-field>
               </v-col>
               <v-col cols="12" md="6">
-                <v-text-field
-                  v-model.number="settingsStore.deviceSettings.timezoneOffset"
-                  label="Timezone (UTC offset)"
-                  type="number"
-                  :min="-12"
-                  :max="14"
-                  :step="0.5"
+                <v-autocomplete
+                  v-model="settingsStore.deviceSettings.timezone"
+                  :items="timezoneItems"
+                  label="Timezone"
                   variant="outlined"
-                  hint="e.g., -8 for PST, +1 for CET, +8 for CST"
+                  :hint="`Stored as ${settingsStore.deviceSettings.timezone}. Named zones switch to summer/winter time automatically.`"
                   persistent-hint
                 />
               </v-col>

@@ -20,7 +20,7 @@ export const useSettingsStore = defineStore("settings", () => {
   const deviceSettings = ref({
     // General
     deviceName: "PhotoFrame",
-    timezoneOffset: 0,
+    timezone: "UTC0",
     ntpServer: "pool.ntp.org",
     displayOrientation: "landscape",
     displayRotationDeg: 180,
@@ -230,17 +230,9 @@ export const useSettingsStore = defineStore("settings", () => {
       const endMins = endMinutes % 60;
       deviceSettings.value.sleepScheduleEnd = `${String(endHours).padStart(2, "0")}:${String(endMins).padStart(2, "0")}`;
 
-      // Parse timezone from POSIX format (e.g., "UTC-8" -> 8)
-      const timezone = data.timezone || "UTC0";
-      let offset = 0;
-      const match = timezone.match(/UTC([+-]?)(\d+)(?::(\d+))?/);
-      if (match) {
-        const sign = match[1] === "-" ? 1 : -1; // POSIX format is inverted
-        const hours = parseInt(match[2]) || 0;
-        const minutes = parseInt(match[3]) || 0;
-        offset = sign * (hours + minutes / 60);
-      }
-      deviceSettings.value.timezoneOffset = offset;
+      // Keep the POSIX TZ string as-is (e.g. "UTC-2" or a DST rule like
+      // "CET-1CEST,M3.5.0,M10.5.0/3") so saving never rewrites it.
+      deviceSettings.value.timezone = (data.timezone || "").trim() || "UTC0";
     } catch (_error) {
       console.log("Device settings API not available (standalone mode)");
     }
@@ -257,22 +249,6 @@ export const useSettingsStore = defineStore("settings", () => {
 
     const [endHours, endMins] = deviceSettings.value.sleepScheduleEnd.split(":").map(Number);
     const sleepScheduleEnd = endHours * 60 + endMins;
-
-    // Convert UTC offset to POSIX timezone format
-    const offsetValue = deviceSettings.value.timezoneOffset || 0;
-    let timezone = "UTC0";
-    if (offsetValue !== 0) {
-      const absOffset = Math.abs(offsetValue);
-      const hours = Math.floor(absOffset);
-      const minutes = Math.round((absOffset - hours) * 60);
-      const sign = offsetValue > 0 ? "-" : "+"; // Inverted for POSIX
-
-      if (minutes === 0) {
-        timezone = `UTC${sign}${hours}`;
-      } else {
-        timezone = `UTC${sign}${hours}:${String(minutes).padStart(2, "0")}`;
-      }
-    }
 
     const currentConfig = {
       auto_rotate: deviceSettings.value.autoRotate,
@@ -296,7 +272,7 @@ export const useSettingsStore = defineStore("settings", () => {
       sleep_schedule_end: sleepScheduleEnd,
       device_name: deviceSettings.value.deviceName,
       ntp_server: deviceSettings.value.ntpServer,
-      timezone: timezone,
+      timezone: deviceSettings.value.timezone || "UTC0",
       access_token: deviceSettings.value.accessToken,
       http_header_key: deviceSettings.value.httpHeaderKey,
       http_header_value: deviceSettings.value.httpHeaderValue,
