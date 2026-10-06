@@ -22,6 +22,8 @@
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "esp_system.h"
+#include "esp_timer.h"
+#include "esp_wifi.h"
 #include "image_processor.h"
 #include "mdns_service.h"
 #include "periodic_tasks.h"
@@ -45,6 +47,17 @@ void utils_set_pending_skip_steps(int steps)
 {
     pending_skip_steps = steps;
 }
+
+// Body throughput of the last successful image download, in kbit/s. Measured
+// from the first to the last body chunk, so the server's render time before the
+// first byte does not count. Kept in RTC memory because the frame deep-sleeps
+// between pulls: it is reported as X-Wifi-Kbps on the NEXT pull, then cleared so
+// a stale figure is never logged twice. -1 = nothing to report.
+RTC_DATA_ATTR static int s_last_download_kbps = -1;
+
+// Smallest body worth timing. Below this the figure is mostly TCP ramp-up and
+// a single scheduler tick, not the link.
+#define DOWNLOAD_KBPS_MIN_BYTES (16 * 1024)
 
 void utils_set_last_fetch_error(const char *error)
 {
@@ -504,6 +517,8 @@ typedef struct {
     bool raw_epd_active;         // true when streaming uncompressed 4bpp EPD data
     bool raw_epd_failed;         // true if raw EPD payload exceeds the display buffer
     size_t raw_epd_written;      // Bytes copied into the EPD buffer
+    int64_t first_data_us;       // esp_timer time of the first body chunk (0 = none yet)
+    int64_t last_data_us;        // esp_timer time of the latest body chunk
 } download_context_t;
 
 // HTTP event handler to write data to file or stream-decompress EPDGZ
@@ -513,6 +528,10 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt)
 
     switch (evt->event_id) {
     case HTTP_EVENT_ON_DATA:
+        ctx->last_data_us = esp_timer_get_time();
+        if (ctx->first_data_us == 0) {
+            ctx->first_data_us = ctx->last_data_us;
+        }
         if (ctx->inflate_candidate && !ctx->inflate_checked && !ctx->inflate_active) {
             ctx->inflate_checked = true;
 
@@ -1039,6 +1058,24 @@ esp_err_t fetch_and_save_image_from_url(const char *url, char *saved_image_path,
             esp_http_client_set_header(client, "X-Battery-Status", batt_status);
         }
 
+        // Report how good the Wi-Fi link is, so the server can log it and a
+        // frame moved to a weak spot shows up in its history. RSSI is the
+        // received signal of the current AP in dBm (closer to 0 = stronger).
+        wifi_ap_record_t ap_info;
+        if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK && ap_info.rssi < 0) {
+            char rssi_str[8];
+            snprintf(rssi_str, sizeof(rssi_str), "%d", ap_info.rssi);
+            esp_http_client_set_header(client, "X-Wifi-RSSI", rssi_str);
+        }
+        // Throughput of the previous download (see s_last_download_kbps).
+        // One-shot: cleared once sent, so a 304 cycle doesn't repeat it.
+        if (s_last_download_kbps > 0) {
+            char kbps_str[12];
+            snprintf(kbps_str, sizeof(kbps_str), "%d", s_last_download_kbps);
+            esp_http_client_set_header(client, "X-Wifi-Kbps", kbps_str);
+            s_last_download_kbps = -1;
+        }
+
         // Instrument the internal-RAM margin right before the request. On
         // SRAM-only boards this is the figure that decides whether an HTTPS
         // handshake (~16 KB) can be satisfied alongside the permanently-held
@@ -1115,6 +1152,12 @@ esp_err_t fetch_and_save_image_from_url(const char *url, char *saved_image_path,
         if (err == ESP_OK && status_code == 200 && total_downloaded > 0 && !stream_incomplete) {
             ESP_LOGI(TAG, "Downloaded %d bytes (content_length: %d), content_type: %s",
                      total_downloaded, content_length, content_type);
+            int64_t body_us = ctx.last_data_us - ctx.first_data_us;
+            if (total_downloaded >= DOWNLOAD_KBPS_MIN_BYTES && body_us > 0) {
+                // bits / ms == kbit/s
+                s_last_download_kbps = (int) (((int64_t) total_downloaded * 8 * 1000) / body_us);
+                ESP_LOGI(TAG, "Download throughput: %d kbit/s", s_last_download_kbps);
+            }
             break;  // Success, exit retry loop
         }
 

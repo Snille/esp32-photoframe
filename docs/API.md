@@ -466,6 +466,8 @@ Every image-fetch request carries these headers so the server can tailor the res
 | `X-Config-Last-Updated` | Unix timestamp of the last local config change (used for remote sync reconciliation) |
 | `X-Processing-Settings` | JSON blob of the current processing parameters |
 | `X-Color-Palette` | JSON blob of the current color palette |
+| `X-Wifi-RSSI` | Signal strength of the connected access point in dBm (e.g., `-62`; closer to 0 is stronger). Omitted when not connected |
+| `X-Wifi-Kbps` | Body throughput of the *previous* successful image download in kbit/s. Sent once, then cleared; omitted when there is nothing new to report (first boot, 304 cycles, or a body under 16 KB) |
 
 Authentication and custom headers, when configured via `/api/config`:
 

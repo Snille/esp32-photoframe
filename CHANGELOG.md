@@ -10,6 +10,25 @@ DFRobot FireBeetle) on **ESP-IDF v6.0** from a single `v<version>` tag; each
 release carries every board's flashable factory bin and drives the web flasher.
 (The old manual `firebeetle-v<version>` line is retired.)
 
+## 2.20.0
+
+### Added
+- **The frame reports how good its Wi-Fi link is.** Every image request now
+  carries `X-Wifi-RSSI` — the signal strength of the connected access point in
+  dBm (closer to 0 is stronger) — and `X-Wifi-Kbps`, the download speed of the
+  *previous* image. The speed is timed from the first to the last body chunk, so
+  the server's render time does not count; it is kept in RTC memory across deep
+  sleep, sent once and then cleared, and skipped for bodies under 16 KB. Server
+  v1.53.0 logs both per pull, shows them in the Devices list and Home Assistant,
+  and can draw a Wi-Fi icon on the photo. See `docs/API.md`.
+
+### Fixed
+- **Web UI: pick a real timezone.** The settings tab only understood `UTC±N`, so
+  a daylight-saving rule such as `CET-1CEST,M3.5.0,M10.5.0/3` showed as 0 and
+  Save wrote `UTC0` back. The field is now a searchable list of named zones (with
+  their DST rules) plus fixed offsets; unknown values are kept as "(custom)".
+  Device Time now shows the local time the frame itself reports.
+
 ## 2.19.0
 
 Two upstream fixes ported from
