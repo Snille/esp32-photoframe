@@ -17,8 +17,9 @@
 //
 // Intended to run only during the out-of-box provisioning window (when no Wi-Fi
 // credentials are stored), alongside the captive-portal AP. On success the
-// credentials are written to NVS via wifi_manager_save_credentials(), which the
-// main provisioning loop detects to finish setup and reboot.
+// network is ADDED to the saved network list via wifi_manager_save_credentials()
+// (other saved networks are kept), which the main provisioning loop detects to
+// finish setup and reboot. Also runs when no saved network connects at boot.
 
 // Start the Improv-Serial listener task. Safe to call once. Returns ESP_OK on
 // success, or ESP_ERR_NOT_SUPPORTED if the active console transport can't carry

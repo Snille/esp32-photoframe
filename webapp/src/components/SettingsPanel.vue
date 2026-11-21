@@ -44,6 +44,73 @@ const httpsUrlBlocked = computed(
     settingsStore.deviceSettings.rotationMode === "url"
 );
 
+// Saved Wi-Fi networks (the frame keeps several and falls back between them).
+// The list never carries passwords.
+const wifiNetworks = ref({ networks: [], max: 5, current: "", last_good: "" });
+const newWifiSsid = ref("");
+const newWifiPassword = ref("");
+const wifiListBusy = ref(false);
+const wifiListMessage = ref("");
+const wifiListError = ref(false);
+
+async function fetchWifiNetworks() {
+  try {
+    const response = await fetch("/api/wifi/networks");
+    if (response.ok) {
+      wifiNetworks.value = await response.json();
+    }
+  } catch (error) {
+    console.error("Failed to load saved Wi-Fi networks:", error);
+  }
+}
+
+async function wifiListRequest(request, okMessage) {
+  wifiListBusy.value = true;
+  wifiListMessage.value = "";
+  try {
+    const response = await request();
+    if (response.ok) {
+      wifiNetworks.value = await response.json();
+      wifiListError.value = false;
+      wifiListMessage.value = okMessage;
+      return true;
+    }
+    wifiListError.value = true;
+    wifiListMessage.value = (await response.text()) || "Request failed";
+  } catch (error) {
+    wifiListError.value = true;
+    wifiListMessage.value = String(error);
+  } finally {
+    wifiListBusy.value = false;
+  }
+  return false;
+}
+
+async function addWifiNetwork() {
+  const ssid = newWifiSsid.value.trim();
+  if (!ssid) return;
+  const ok = await wifiListRequest(
+    () =>
+      fetch("/api/wifi/networks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ssid, password: newWifiPassword.value }),
+      }),
+    `Saved "${ssid}". The frame uses it when its current network is out of reach.`
+  );
+  if (ok) {
+    newWifiSsid.value = "";
+    newWifiPassword.value = "";
+  }
+}
+
+async function removeWifiNetwork(ssid) {
+  await wifiListRequest(
+    () => fetch(`/api/wifi/networks?ssid=${encodeURIComponent(ssid)}`, { method: "DELETE" }),
+    `Removed "${ssid}".`
+  );
+}
+
 // Device time state
 const deviceTime = ref("");
 const syncingTime = ref(false);
@@ -198,6 +265,7 @@ async function resetBatteryCalibration() {
 onMounted(() => {
   fetchDeviceTime();
   fetchBatteryStatus();
+  fetchWifiNetworks();
   // Tick every second to update display
   tickInterval = setInterval(updateDisplayTime, 1000);
 });
@@ -512,6 +580,69 @@ async function enterFlashMode() {
                   persistent-hint
                   placeholder="••••••••"
                 />
+              </v-col>
+            </v-row>
+
+            <v-row>
+              <v-col cols="12">
+                <div class="text-subtitle-1 mb-1">Saved WiFi networks</div>
+                <div class="text-caption text-medium-emphasis mb-2">
+                  The frame tries the last network that worked first. If that one is out of reach,
+                  it scans once and joins another saved network that is in range (up to
+                  {{ wifiNetworks.max }} networks). Saving the SSID above moves the frame to that
+                  network and adds it here.
+                </div>
+                <v-chip
+                  v-for="net in wifiNetworks.networks"
+                  :key="net.ssid"
+                  class="mr-2 mb-2"
+                  :color="net.connected ? 'primary' : undefined"
+                  :closable="wifiNetworks.networks.length > 1"
+                  :disabled="wifiListBusy"
+                  @click:close="removeWifiNetwork(net.ssid)"
+                >
+                  <v-icon start size="small">mdi-wifi</v-icon>
+                  {{ net.ssid }}
+                  <span v-if="net.connected" class="ml-1">(connected)</span>
+                </v-chip>
+              </v-col>
+              <v-col cols="12" md="5">
+                <v-text-field
+                  v-model="newWifiSsid"
+                  label="Add network: SSID"
+                  variant="outlined"
+                  density="comfortable"
+                />
+              </v-col>
+              <v-col cols="12" md="5">
+                <v-text-field
+                  v-model="newWifiPassword"
+                  label="Password"
+                  type="password"
+                  variant="outlined"
+                  density="comfortable"
+                />
+              </v-col>
+              <v-col cols="12" md="2">
+                <v-btn
+                  block
+                  color="primary"
+                  variant="tonal"
+                  :loading="wifiListBusy"
+                  :disabled="!newWifiSsid.trim()"
+                  @click="addWifiNetwork"
+                >
+                  Add
+                </v-btn>
+              </v-col>
+              <v-col v-if="wifiListMessage" cols="12">
+                <v-alert
+                  :type="wifiListError ? 'error' : 'success'"
+                  density="compact"
+                  variant="tonal"
+                >
+                  {{ wifiListMessage }}
+                </v-alert>
               </v-col>
             </v-row>
 

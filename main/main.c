@@ -95,34 +95,17 @@ static esp_err_t sntp_sync_periodic_callback(void)
     }
 }
 
-// Helper function to connect to WiFi with timeout
-static bool connect_to_wifi_with_timeout(int timeout_seconds)
+// Connect using the saved network list: last-good first, then one scan and
+// the other saved networks that are in range. wifi_manager_connect_saved()
+// returns as soon as it knows the answer, so there is no extra wait here (the
+// old single-network helper idled out its whole timeout after a failure).
+static bool connect_to_wifi(void)
 {
-    char wifi_ssid[WIFI_SSID_MAX_LEN] = {0};
-    char wifi_password[WIFI_PASS_MAX_LEN] = {0};
-
-    ESP_ERROR_CHECK(wifi_manager_load_credentials(wifi_ssid, wifi_password));
-    ESP_LOGI(TAG, "Connecting to WiFi SSID: %s", wifi_ssid);
-    wifi_manager_connect(wifi_ssid, wifi_password);
-
-    // Wait for WiFi connection (with timeout)
-    ESP_LOGI(TAG, "Waiting for WiFi connection...");
-    int retry_count = 0;
-    while (!wifi_manager_is_connected() && retry_count < timeout_seconds) {
-        if (retry_count % 10 == 0 && retry_count > 0) {
-            ESP_LOGI(TAG, "WiFi connecting... (%d seconds elapsed)", retry_count);
-        }
-        vTaskDelay(pdMS_TO_TICKS(1000));
-        retry_count++;
-    }
-
-    if (wifi_manager_is_connected()) {
-        ESP_LOGI(TAG, "WiFi connected after %d seconds", retry_count);
+    if (wifi_manager_connect_saved() == ESP_OK) {
         return true;
-    } else {
-        ESP_LOGE(TAG, "WiFi connection timeout after %d seconds", timeout_seconds);
-        return false;
     }
+    ESP_LOGE(TAG, "WiFi: no saved network connected");
+    return false;
 }
 
 static void button_task(void *arg)
@@ -205,6 +188,66 @@ static void ensure_http_server_running(void)
     ESP_LOGI(TAG, "HTTP server started");
 }
 
+// Captive portal + Improv-Serial setup window. Used both out of the box and
+// when no saved network connects at boot. A network added here goes INTO the
+// saved list (wifi_manager_save_credentials) and the frame restarts to use it.
+// Never returns.
+static void run_provisioning_and_restart(void)
+{
+    // Out-of-box setup: give the user more time to scan the QR code
+    // and provision via the app before the device auto-sleeps.
+    power_manager_set_auto_sleep_timeout(OOBE_AUTO_SLEEP_TIMEOUT_SEC);
+
+    if (storage_has_persistent_storage()) {
+        ESP_LOGI(TAG, "Option 1: Place wifi.txt on root of storage with:");
+        ESP_LOGI(TAG, "  Line 1: WiFi SSID");
+        ESP_LOGI(TAG, "  Line 2: WiFi Password");
+        ESP_LOGI(TAG, "  Line 3: Device Name (optional, default: PhotoFrame)");
+        ESP_LOGI(TAG, "  Then restart the device");
+        ESP_LOGI(TAG, "===========================================");
+    }
+    ESP_LOGI(TAG, "Option 2: Use captive portal:");
+    ESP_LOGI(TAG, "1. Connect to WiFi: PhotoFrame - XXXXXX");
+    ESP_LOGI(TAG, "2. Open browser to: http://192.168.4.1");
+    ESP_LOGI(TAG, "3. Enter your WiFi credentials");
+    ESP_LOGI(TAG, "===========================================");
+
+    ESP_ERROR_CHECK(wifi_provisioning_start_ap());
+
+    // Option 3: Improv-Serial — accept Wi-Fi credentials straight over
+    // USB from the browser flasher (ESP Web Tools), no AP join needed.
+    // Runs alongside the captive portal; on success it saves credentials
+    // to NVS (added to the saved network list), which the loop below
+    // detects.
+    ESP_LOGI(TAG, "Option 3: Improv-Serial via the browser flasher (over USB)");
+    ESP_LOGI(TAG, "===========================================");
+    improv_serial_start();
+
+    // Render the OOBE splash + QR *after* bringing up the AP and Improv.
+    // The 6-color EPD full refresh takes ~15-30 s; doing it first delayed
+    // Improv past the browser flasher's (ESP Web Tools) detection window,
+    // so the "enter Wi-Fi" step never appeared. Improv is a background
+    // task, so it now answers the flasher immediately while the splash
+    // paints in parallel.
+    splash_screen_display();
+
+    while (!wifi_manager_credentials_saved()) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+
+    // Set flag to show setup-complete screen after restart
+    nvs_handle_t nvs_handle;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
+        nvs_set_u8(nvs_handle, NVS_SETUP_COMPLETE_KEY, 1);
+        nvs_commit(nvs_handle);
+        nvs_close(nvs_handle);
+    }
+
+    ESP_LOGI(TAG, "WiFi credentials saved! Restarting...");
+    vTaskDelay(pdMS_TO_TICKS(3000));
+    esp_restart();
+}
+
 void deep_sleep_wake_main(wakeup_source_t wakeup_src)
 {
     bool is_button_wake = (wakeup_src == WAKEUP_SOURCE_ROTATE_BUTTON);
@@ -219,7 +262,7 @@ void deep_sleep_wake_main(wakeup_source_t wakeup_src)
                  rotation_mode == ROTATION_MODE_URL ? "URL rotation" : "HA battery post");
         ESP_ERROR_CHECK(wifi_manager_init());
 
-        if (connect_to_wifi_with_timeout(60)) {
+        if (connect_to_wifi()) {
             wifi_connected = true;
             ESP_LOGI(TAG, "WiFi connected");
         } else {
@@ -588,62 +631,11 @@ void app_main(void)
             ESP_LOGI(TAG, "===========================================");
             ESP_LOGI(TAG, "No WiFi credentials found - Starting AP mode");
             ESP_LOGI(TAG, "===========================================");
-
-            // Out-of-box setup: give the user more time to scan the QR code
-            // and provision via the app before the device auto-sleeps.
-            power_manager_set_auto_sleep_timeout(OOBE_AUTO_SLEEP_TIMEOUT_SEC);
-
-            if (storage_has_persistent_storage()) {
-                ESP_LOGI(TAG, "Option 1: Place wifi.txt on root of storage with:");
-                ESP_LOGI(TAG, "  Line 1: WiFi SSID");
-                ESP_LOGI(TAG, "  Line 2: WiFi Password");
-                ESP_LOGI(TAG, "  Line 3: Device Name (optional, default: PhotoFrame)");
-                ESP_LOGI(TAG, "  Then restart the device");
-                ESP_LOGI(TAG, "===========================================");
-            }
-            ESP_LOGI(TAG, "Option 2: Use captive portal:");
-            ESP_LOGI(TAG, "1. Connect to WiFi: PhotoFrame - XXXXXX");
-            ESP_LOGI(TAG, "2. Open browser to: http://192.168.4.1");
-            ESP_LOGI(TAG, "3. Enter your WiFi credentials");
-            ESP_LOGI(TAG, "===========================================");
-
-            ESP_ERROR_CHECK(wifi_provisioning_start_ap());
-
-            // Option 3: Improv-Serial — accept Wi-Fi credentials straight over
-            // USB from the browser flasher (ESP Web Tools), no AP join needed.
-            // Runs alongside the captive portal; on success it saves credentials
-            // to NVS, which the loop below detects.
-            ESP_LOGI(TAG, "Option 3: Improv-Serial via the browser flasher (over USB)");
-            ESP_LOGI(TAG, "===========================================");
-            improv_serial_start();
-
-            // Render the OOBE splash + QR *after* bringing up the AP and Improv.
-            // The 6-color EPD full refresh takes ~15-30 s; doing it first delayed
-            // Improv past the browser flasher's (ESP Web Tools) detection window,
-            // so the "enter Wi-Fi" step never appeared. Improv is a background
-            // task, so it now answers the flasher immediately while the splash
-            // paints in parallel.
-            splash_screen_display();
-
-            while (!wifi_provisioning_is_provisioned()) {
-                vTaskDelay(pdMS_TO_TICKS(1000));
-            }
-
-            // Set flag to show setup-complete screen after restart
-            nvs_handle_t nvs_handle;
-            if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
-                nvs_set_u8(nvs_handle, NVS_SETUP_COMPLETE_KEY, 1);
-                nvs_commit(nvs_handle);
-                nvs_close(nvs_handle);
-            }
-
-            ESP_LOGI(TAG, "WiFi credentials saved! Restarting...");
-            vTaskDelay(pdMS_TO_TICKS(3000));
-            esp_restart();
+            run_provisioning_and_restart();
         }
     }
 
-    if (connect_to_wifi_with_timeout(30)) {
+    if (connect_to_wifi()) {
         // Check and run periodic tasks (OTA check, SNTP sync if due)
         // Note: If RTC was invalid at boot, sntp_sync was already forced via
         // periodic_tasks_force_run()
@@ -653,17 +645,12 @@ void app_main(void)
         // Start mDNS service
         ESP_ERROR_CHECK(mdns_service_init());
     } else {
-        ESP_LOGW(TAG, "Failed to connect to WiFi - clearing credentials");
-        nvs_handle_t nvs_handle;
-        if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
-            nvs_erase_key(nvs_handle, NVS_WIFI_SSID_KEY);
-            nvs_erase_key(nvs_handle, NVS_WIFI_PASS_KEY);
-            nvs_commit(nvs_handle);
-            nvs_close(nvs_handle);
-        }
-        ESP_LOGI(TAG, "Restarting to enter provisioning mode...");
-        vTaskDelay(pdMS_TO_TICKS(2000));
-        esp_restart();
+        // Keep the saved networks: the frame may simply be somewhere none of
+        // them reaches (moved, router down). Open the setup AP + Improv so a
+        // network for this place can be ADDED; if nobody does, the OOBE auto
+        // sleep takes over and a later wake tries the saved list again.
+        ESP_LOGW(TAG, "No saved WiFi network connected - opening setup AP (networks kept)");
+        run_provisioning_and_restart();
     }
 
     xTaskCreate(button_task, "button_task", 8192, NULL, 5, NULL);

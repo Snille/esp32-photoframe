@@ -92,6 +92,7 @@ typedef enum {
 // WiFi
 #define NVS_WIFI_SSID_KEY "wifi_ssid"
 #define NVS_WIFI_PASS_KEY "wifi_pass"
+#define NVS_WIFI_NETS_KEY "wifi_nets"
 
 // General
 #define NVS_NAMESPACE "photoframe"

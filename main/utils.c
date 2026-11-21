@@ -148,32 +148,73 @@ esp_err_t apply_config_from_json(cJSON *root)
         periodic_tasks_check_and_run();
     }
 
-    // WiFi
+    // WiFi: saved network list edits. Applied before a move (below) so one
+    // payload can both add a network and switch to it.
+    //   "wifi_add":    {"ssid": "...", "password": "..."} or an array of them
+    //   "wifi_remove": "ssid" or an array of SSIDs
+    // Neither one connects; the list is used on the next connect.
+    cJSON *wifi_add = cJSON_GetObjectItem(root, "wifi_add");
+    if (wifi_add && (cJSON_IsObject(wifi_add) || cJSON_IsArray(wifi_add))) {
+        cJSON *one = cJSON_IsArray(wifi_add) ? wifi_add->child : wifi_add;
+        while (one) {
+            cJSON *s_obj = cJSON_GetObjectItem(one, "ssid");
+            cJSON *p_obj = cJSON_GetObjectItem(one, "password");
+            if (s_obj && cJSON_IsString(s_obj)) {
+                esp_err_t err = wifi_manager_add_network(
+                    cJSON_GetStringValue(s_obj),
+                    (p_obj && cJSON_IsString(p_obj)) ? cJSON_GetStringValue(p_obj) : NULL);
+                if (err != ESP_OK) {
+                    ESP_LOGW(TAG, "wifi_add '%s' failed: %s", cJSON_GetStringValue(s_obj),
+                             esp_err_to_name(err));
+                }
+            }
+            one = cJSON_IsArray(wifi_add) ? one->next : NULL;
+        }
+    }
+    cJSON *wifi_remove = cJSON_GetObjectItem(root, "wifi_remove");
+    if (wifi_remove && (cJSON_IsString(wifi_remove) || cJSON_IsArray(wifi_remove))) {
+        cJSON *one = cJSON_IsArray(wifi_remove) ? wifi_remove->child : wifi_remove;
+        while (one) {
+            if (cJSON_IsString(one)) {
+                esp_err_t err = wifi_manager_remove_network(cJSON_GetStringValue(one));
+                if (err != ESP_OK) {
+                    ESP_LOGW(TAG, "wifi_remove '%s' failed: %s", cJSON_GetStringValue(one),
+                             esp_err_to_name(err));
+                }
+            }
+            one = cJSON_IsArray(wifi_remove) ? one->next : NULL;
+        }
+    }
+
+    // WiFi: move to a network ("wifi_ssid" + optional "wifi_password"). The
+    // network is tested first; on success it is added to the saved list (or its
+    // password updated) and becomes last-good. On failure nothing is saved and
+    // the frame reconnects through the saved list.
     cJSON *wifi_ssid_obj = cJSON_GetObjectItem(root, "wifi_ssid");
     cJSON *wifi_password_obj = cJSON_GetObjectItem(root, "wifi_password");
-    if (wifi_ssid_obj && cJSON_IsString(wifi_ssid_obj)) {
+    if (wifi_ssid_obj && cJSON_IsString(wifi_ssid_obj) &&
+        strlen(cJSON_GetStringValue(wifi_ssid_obj)) > 0) {
         const char *new_ssid = cJSON_GetStringValue(wifi_ssid_obj);
-        const char *new_password = NULL;
-        if (wifi_password_obj && cJSON_IsString(wifi_password_obj) &&
-            strlen(cJSON_GetStringValue(wifi_password_obj)) > 0) {
-            new_password = cJSON_GetStringValue(wifi_password_obj);
-        }
+        bool password_given = wifi_password_obj && cJSON_IsString(wifi_password_obj) &&
+                              strlen(cJSON_GetStringValue(wifi_password_obj)) > 0;
 
         const char *current_ssid = config_manager_get_wifi_ssid();
-        if (strcmp(new_ssid, current_ssid) != 0 || new_password != NULL) {
-            if (new_password == NULL) {
-                new_password = config_manager_get_wifi_password();
+        if (strcmp(new_ssid, current_ssid) != 0 || password_given) {
+            // Password: the one given, else the saved one for that SSID, else
+            // (old behaviour) the current network's password.
+            char new_password[WIFI_PASS_MAX_LEN + 1] = {0};
+            if (password_given) {
+                strncpy(new_password, cJSON_GetStringValue(wifi_password_obj), WIFI_PASS_MAX_LEN);
+            } else if (!wifi_manager_get_saved_password(new_ssid, new_password,
+                                                        sizeof(new_password))) {
+                strncpy(new_password, config_manager_get_wifi_password(), WIFI_PASS_MAX_LEN);
             }
 
             ESP_LOGI(TAG, "WiFi credentials changed, testing connection to: %s", new_ssid);
 
             esp_err_t err = wifi_manager_connect(new_ssid, new_password);
             if (err == ESP_OK) {
-                config_manager_set_wifi_ssid(new_ssid);
-                if (wifi_password_obj && cJSON_IsString(wifi_password_obj) &&
-                    strlen(cJSON_GetStringValue(wifi_password_obj)) > 0) {
-                    config_manager_set_wifi_password(new_password);
-                }
+                wifi_manager_save_credentials(new_ssid, new_password);
                 ESP_LOGI(TAG, "Successfully connected and saved WiFi credentials");
                 // The browser that sent this request is on the old network and
                 // cannot be answered any more. Draw the info screen so the new
@@ -181,8 +222,8 @@ esp_err_t apply_config_from_json(cJSON *root)
                 ESP_LOGI(TAG, "Requesting info screen redraw so the new IP is readable");
                 power_manager_request_info_screen();
             } else {
-                ESP_LOGW(TAG, "Failed to connect to new WiFi, reverting to previous credentials");
-                wifi_manager_connect(current_ssid, config_manager_get_wifi_password());
+                ESP_LOGW(TAG, "Failed to connect to new WiFi, reconnecting via saved networks");
+                wifi_manager_connect_saved();
                 return ESP_FAIL;
             }
         }

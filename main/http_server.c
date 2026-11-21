@@ -38,6 +38,7 @@
 #include "soc/rtc_cntl_reg.h"
 #include "storage.h"
 #include "utils.h"
+#include "wifi_manager.h"
 
 #ifndef MIN
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
@@ -1796,6 +1797,16 @@ static esp_err_t config_handler(httpd_req_t *req)
 
         const char *wifi_ssid = config_manager_get_wifi_ssid();
         cJSON_AddStringToObject(root, "wifi_ssid", wifi_ssid ? wifi_ssid : "");
+        // Saved networks, names only (never passwords).
+        {
+            wifi_saved_network_t nets[WIFI_MAX_SAVED_NETWORKS];
+            int n = wifi_manager_get_saved_networks(nets, WIFI_MAX_SAVED_NETWORKS);
+            cJSON *arr = cJSON_AddArrayToObject(root, "wifi_networks");
+            for (int i = 0; i < n; i++) {
+                cJSON_AddItemToArray(arr, cJSON_CreateString(nets[i].ssid));
+            }
+            memset(nets, 0, sizeof(nets));
+        }
 
         cJSON_AddStringToObject(
             root, "display_orientation",
@@ -2860,10 +2871,135 @@ static esp_err_t color_palette_handler(httpd_req_t *req)
     return ESP_FAIL;
 }
 
+// Saved Wi-Fi networks (see docs/API.md). Passwords are never returned.
+// - GET: the list plus how this wake's connect went.
+// - POST {"ssid","password"[,"prefer":true]}: add or update, no connect;
+//   prefer = try it first on the next connect.
+// - DELETE ?ssid=...: remove (not the only one).
+static esp_err_t wifi_networks_send_list(httpd_req_t *req)
+{
+    wifi_saved_network_t nets[WIFI_MAX_SAVED_NETWORKS];
+    int n = wifi_manager_get_saved_networks(nets, WIFI_MAX_SAVED_NETWORKS);
+
+    char connected[33] = {0};
+    wifi_ap_record_t ap_info;
+    if (wifi_manager_is_connected() && esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
+        memcpy(connected, ap_info.ssid, sizeof(connected) - 1);
+    }
+    const char *last_good = config_manager_get_wifi_ssid();
+
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "current", connected);
+    cJSON_AddStringToObject(root, "last_good", last_good ? last_good : "");
+    cJSON_AddNumberToObject(root, "max", WIFI_MAX_SAVED_NETWORKS);
+    int connect_ms = -1;
+    int connect_attempts = 0;
+    bool connect_scanned = false;
+    wifi_manager_get_last_connect_stats(&connect_ms, &connect_attempts, &connect_scanned);
+    cJSON_AddNumberToObject(root, "last_connect_ms", connect_ms);
+    cJSON_AddNumberToObject(root, "last_connect_attempts", connect_attempts);
+    cJSON_AddBoolToObject(root, "last_connect_scanned", connect_scanned);
+    cJSON *arr = cJSON_AddArrayToObject(root, "networks");
+    for (int i = 0; i < n; i++) {
+        cJSON *o = cJSON_CreateObject();
+        cJSON_AddStringToObject(o, "ssid", nets[i].ssid);
+        cJSON_AddBoolToObject(o, "last_good", last_good && strcmp(nets[i].ssid, last_good) == 0);
+        cJSON_AddBoolToObject(o, "connected", strcmp(nets[i].ssid, connected) == 0);
+        cJSON_AddItemToArray(arr, o);
+    }
+    memset(nets, 0, sizeof(nets));
+
+    char *json_str = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, json_str ? json_str : "{}");
+    free(json_str);
+    return ESP_OK;
+}
+
+static esp_err_t wifi_networks_handler(httpd_req_t *req)
+{
+    power_manager_reset_sleep_timer();
+
+    if (req->method == HTTP_GET) {
+        return wifi_networks_send_list(req);
+    }
+
+    if (req->method == HTTP_POST) {
+        if (req->content_len <= 0 || req->content_len > 512) {
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid body");
+            return ESP_FAIL;
+        }
+        char buf[513];
+        int received = 0;
+        while (received < req->content_len) {
+            int ret = httpd_req_recv(req, buf + received, req->content_len - received);
+            if (ret <= 0) {
+                httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Failed to receive data");
+                return ESP_FAIL;
+            }
+            received += ret;
+        }
+        buf[received] = '\0';
+        cJSON *root = cJSON_Parse(buf);
+        memset(buf, 0, sizeof(buf));
+        if (!root) {
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+            return ESP_FAIL;
+        }
+        cJSON *ssid = cJSON_GetObjectItem(root, "ssid");
+        cJSON *pass = cJSON_GetObjectItem(root, "password");
+        cJSON *prefer = cJSON_GetObjectItem(root, "prefer");
+        esp_err_t err = ESP_ERR_INVALID_ARG;
+        if (ssid && cJSON_IsString(ssid)) {
+            err = wifi_manager_add_network(
+                cJSON_GetStringValue(ssid),
+                (pass && cJSON_IsString(pass)) ? cJSON_GetStringValue(pass) : NULL);
+            if (err == ESP_OK && cJSON_IsTrue(prefer)) {
+                err = wifi_manager_prefer_network(cJSON_GetStringValue(ssid));
+            }
+        }
+        cJSON_Delete(root);
+        if (err != ESP_OK) {
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                                "Invalid network (SSID 1-32 chars, password max 64)");
+            return ESP_FAIL;
+        }
+        return wifi_networks_send_list(req);
+    }
+
+    if (req->method == HTTP_DELETE) {
+        char query[160];
+        char raw[100];
+        char ssid[WIFI_SSID_MAX_LEN + 1];
+        if (httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK ||
+            httpd_query_key_value(query, "ssid", raw, sizeof(raw)) != ESP_OK) {
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing ssid parameter");
+            return ESP_FAIL;
+        }
+        url_decode(ssid, raw, sizeof(ssid));
+        esp_err_t err = wifi_manager_remove_network(ssid);
+        if (err == ESP_ERR_NOT_FOUND) {
+            httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "Network not saved");
+            return ESP_FAIL;
+        } else if (err == ESP_ERR_INVALID_STATE) {
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Cannot remove the only saved network");
+            return ESP_FAIL;
+        } else if (err != ESP_OK) {
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to remove network");
+            return ESP_FAIL;
+        }
+        return wifi_networks_send_list(req);
+    }
+
+    httpd_resp_send_err(req, HTTPD_405_METHOD_NOT_ALLOWED, "Method not allowed");
+    return ESP_FAIL;
+}
+
 esp_err_t http_server_init(void)
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.max_uri_handlers = 50;
+    config.max_uri_handlers = 56;
     config.stack_size = 12288;       // Increased from 8192 to 12KB
     config.max_open_sockets = 10;    // Limit concurrent connections to prevent memory exhaustion
     config.lru_purge_enable = true;  // Enable LRU purging of connections
@@ -3116,6 +3252,22 @@ esp_err_t http_server_init(void)
                                          .handler = factory_reset_handler,
                                          .user_ctx = NULL};
         httpd_register_uri_handler(server, &factory_reset_uri);
+
+        httpd_uri_t wifi_networks_get_uri = {.uri = "/api/wifi/networks",
+                                             .method = HTTP_GET,
+                                             .handler = wifi_networks_handler,
+                                             .user_ctx = NULL};
+        httpd_register_uri_handler(server, &wifi_networks_get_uri);
+        httpd_uri_t wifi_networks_post_uri = {.uri = "/api/wifi/networks",
+                                              .method = HTTP_POST,
+                                              .handler = wifi_networks_handler,
+                                              .user_ctx = NULL};
+        httpd_register_uri_handler(server, &wifi_networks_post_uri);
+        httpd_uri_t wifi_networks_delete_uri = {.uri = "/api/wifi/networks",
+                                                .method = HTTP_DELETE,
+                                                .handler = wifi_networks_handler,
+                                                .user_ctx = NULL};
+        httpd_register_uri_handler(server, &wifi_networks_delete_uri);
 
         httpd_uri_t display_calibration_uri = {.uri = "/api/calibration/display",
                                                .method = HTTP_POST,

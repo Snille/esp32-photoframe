@@ -112,6 +112,7 @@ Get current device configuration.
   "timezone": "UTC-8",
   "ntp_server": "pool.ntp.org",
   "wifi_ssid": "MyNetwork",
+  "wifi_networks": ["MyNetwork", "SummerHouse"],
   "display_orientation": "landscape",
   "display_rotation_deg": 180,
   "auto_rotate": true,
@@ -140,6 +141,8 @@ Get current device configuration.
 - `device_name`: Device name (used for mDNS hostname)
 - `timezone`: POSIX timezone string (e.g., `UTC-8` for PST)
 - `ntp_server`: NTP server address
+- `wifi_ssid`: The last-good Wi-Fi network (the one that last connected; tried first on every wake)
+- `wifi_networks`: Names of all saved Wi-Fi networks (passwords are never returned). See [Wi-Fi Networks](#wi-fi-networks)
 - `display_orientation`: `"landscape"` or `"portrait"`
 - `display_rotation_deg`: Display rotation in degrees (0, 90, 180, 270)
 - `auto_rotate`: Enable automatic image rotation
@@ -181,11 +184,69 @@ Update configuration. Only include fields to change.
 }
 ```
 
+**Wi-Fi keys:**
+- `wifi_ssid` + optional `wifi_password`: move to this network. The device tests it first. On success the network is added to the saved list (or its password is updated) and becomes last-good. On failure nothing is saved, the device reconnects through the saved list, and the request returns `400`. With no `wifi_password`, the saved password for that SSID is used, else the current network's password.
+- `wifi_add`: `{"ssid": "...", "password": "..."}` or an array of such objects. Saves the network without connecting to it.
+- `wifi_remove`: an SSID string or an array of SSIDs. Removes saved networks. The only saved network cannot be removed.
+
+`wifi_add` and `wifi_remove` are applied before `wifi_ssid`, so one request (or one `X-Config-Payload`) can add a network and move to it.
+
 **TLS certificate pinning:** If the request changes `image_url` to an HTTPS URL different from the current value, the device fetches and pins that server's TLS certificate before applying the config. If the fetch fails, the request returns `400 Bad Request` with a `message` describing the failure and **no config changes are persisted**. Changing `image_url` to an HTTP URL or clearing it clears any previously pinned certificate. `GET /api/config` reports the current state via `ca_cert_set`.
 
 ### `PATCH /api/config`
 
 Same as `POST /api/config`. Both methods accept partial updates.
+
+---
+
+## Wi-Fi Networks
+
+The device keeps up to 5 Wi-Fi networks. On every connect (boot and each wake) it:
+1. Joins the **last-good** network directly, without a scan. A normal wake at home costs the same as with one saved network.
+2. If that fails and other networks are saved, runs **one** scan and tries the saved networks that are in range, strongest first. The one that connects becomes last-good.
+
+Saved networks that are not in range are skipped, so a hidden SSID is only used when it is the last-good network. If no saved network connects at boot, the setup AP and Improv-Serial open; the saved list is kept, and a network added there is added to it. The captive portal, Improv-Serial and `wifi.txt` all add to the list. When the list is full, adding a new network drops the oldest one that is not last-good.
+
+### `GET /api/wifi/networks`
+
+**Response:**
+```json
+{
+  "current": "MyNetwork",
+  "last_good": "MyNetwork",
+  "max": 5,
+  "last_connect_ms": 1840,
+  "last_connect_attempts": 1,
+  "last_connect_scanned": false,
+  "networks": [
+    { "ssid": "MyNetwork", "last_good": true, "connected": true },
+    { "ssid": "SummerHouse", "last_good": false, "connected": false }
+  ]
+}
+```
+
+- `current`: SSID the device is connected to right now (empty if none)
+- `last_good`: SSID tried first on the next connect
+- `last_connect_ms`, `last_connect_attempts`, `last_connect_scanned`: how the connect at this boot/wake went (time, networks tried, whether a scan was needed). `-1` ms if it has not run
+
+Passwords are never returned.
+
+### `POST /api/wifi/networks`
+
+Add or update a saved network. Does not connect. An empty or missing `password` keeps the stored password of an existing entry. With `"prefer": true` the network becomes last-good, so it is tried first on the next connect (for example right before the frame is moved there); if it fails, the normal fallback applies.
+
+**Request:**
+```json
+{ "ssid": "SummerHouse", "password": "secret", "prefer": true }
+```
+
+**Response:** the list, as for `GET`. `400` if the SSID is empty or longer than 32 bytes, or the password is longer than 64 bytes.
+
+### `DELETE /api/wifi/networks?ssid=<ssid>`
+
+Remove a saved network (URL-encode the SSID). Removing the last-good network makes the first remaining one last-good.
+
+**Response:** the list, as for `GET`. `404` if the network is not saved, `400` if it is the only saved network.
 
 ---
 
@@ -514,6 +575,8 @@ The `X-Config-Payload` response header carries a JSON object matching the schema
   "color_palette": { "black": { "r": 2, "g": 2, "b": 2 }, ... }
 }
 ```
+
+`config` accepts the Wi-Fi keys described under [`POST /api/config`](#post-apiconfig): `wifi_ssid` + `wifi_password` (move to a network), `wifi_add` and `wifi_remove` (edit the saved list).
 
 ---
 

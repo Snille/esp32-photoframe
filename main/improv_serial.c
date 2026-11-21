@@ -315,7 +315,7 @@ static void improv_handle_send_wifi(const uint8_t *cdata, uint8_t clen)
         improv_send_rpc_response(IMPROV_CMD_SEND_WIFI, res, 1);
         improv_send_current_state(IMPROV_STATE_PROVISIONED);
         ESP_LOGI(TAG, "Improv: provisioned, device URL %s — main loop will reboot", url);
-        // wifi_provisioning_is_provisioned() now returns true; the provisioning
+        // wifi_manager_credentials_saved() now returns true; the provisioning
         // loop in main.c finishes setup and restarts.
     } else {
         ESP_LOGW(TAG, "Improv: could not connect to '%s'", ssid);
