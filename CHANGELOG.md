@@ -10,6 +10,17 @@ DFRobot FireBeetle) on **ESP-IDF v6.0** from a single `v<version>` tag; each
 release carries every board's flashable factory bin and drives the web flasher.
 (The old manual `firebeetle-v<version>` line is retired.)
 
+## 2.21.0
+
+### Added
+- **The frame reports which Wi-Fi network it is on.** Every image request now
+  carries `X-Wifi-SSID`, the name of the connected network, next to
+  `X-Wifi-RSSI`. Bytes outside printable ASCII, plus space and `%`, are
+  percent-encoded, so names with spaces or UTF-8 survive the trip. Server
+  v1.54.0 logs it per pull and shows it in the Devices list and Home Assistant,
+  so a frame that goes silent still shows the network it was last seen on.
+  See `docs/API.md`.
+
 ## 2.20.0
 
 ### Added

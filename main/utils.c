@@ -1062,10 +1062,30 @@ esp_err_t fetch_and_save_image_from_url(const char *url, char *saved_image_path,
         // frame moved to a weak spot shows up in its history. RSSI is the
         // received signal of the current AP in dBm (closer to 0 = stronger).
         wifi_ap_record_t ap_info;
-        if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK && ap_info.rssi < 0) {
+        bool have_ap_info = esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK;
+        if (have_ap_info && ap_info.rssi < 0) {
             char rssi_str[8];
             snprintf(rssi_str, sizeof(rssi_str), "%d", ap_info.rssi);
             esp_http_client_set_header(client, "X-Wifi-RSSI", rssi_str);
+        }
+        // Name of the network the frame is on, so the server can tell which AP
+        // a frame was last seen on (e.g. after it moves house). SSIDs are up to
+        // 32 raw bytes and may hold UTF-8, spaces or control bytes, which are
+        // not safe in a header value: percent-encode everything outside
+        // printable ASCII, plus space and '%'. The server percent-decodes.
+        if (have_ap_info && ap_info.ssid[0] != '\0') {
+            char ssid_str[32 * 3 + 1];
+            size_t o = 0;
+            for (size_t i = 0; i < sizeof(ap_info.ssid) && ap_info.ssid[i] != '\0'; i++) {
+                uint8_t c = ap_info.ssid[i];
+                if (c > 0x20 && c < 0x7F && c != '%') {
+                    ssid_str[o++] = (char) c;
+                } else {
+                    o += snprintf(ssid_str + o, sizeof(ssid_str) - o, "%%%02X", c);
+                }
+            }
+            ssid_str[o] = '\0';
+            esp_http_client_set_header(client, "X-Wifi-SSID", ssid_str);
         }
         // Throughput of the previous download (see s_last_download_kbps).
         // One-shot: cleared once sent, so a 304 cycle doesn't repeat it.
