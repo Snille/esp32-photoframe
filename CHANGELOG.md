@@ -10,7 +10,7 @@ DFRobot FireBeetle) on **ESP-IDF v6.0** from a single `v<version>` tag; each
 release carries every board's flashable factory bin and drives the web flasher.
 (The old manual `firebeetle-v<version>` line is retired.)
 
-## 2.21.0
+## 2.22.0
 
 ### Added
 - **Save up to 5 Wi-Fi networks, with automatic fallback.** The frame used to
