@@ -13,6 +13,15 @@ release carries every board's flashable factory bin and drives the web flasher.
 ## 2.21.0
 
 ### Added
+- **Save up to 5 Wi-Fi networks, with automatic fallback.** The frame used to
+  keep one network. It now keeps a list and remembers the last network that
+  worked. On each wake it tries that one first, without a scan; if it fails, it
+  scans once and tries the saved networks it can see, strongest first. The
+  captive portal, Improv, `wifi.txt` and a server-driven move all add to the
+  list. The old single network is migrated once. The web UI gets a **Saved WiFi
+  networks** list (add, remove), and there is a new
+  `GET/POST/DELETE /api/wifi/networks` API that never returns passwords. Config
+  sync accepts new `wifi_add` / `wifi_remove` keys.
 - **The frame reports which Wi-Fi network it is on.** Every image request now
   carries `X-Wifi-SSID`, the name of the connected network, next to
   `X-Wifi-RSSI`. Bytes outside printable ASCII, plus space and `%`, are
@@ -20,6 +29,10 @@ release carries every board's flashable factory bin and drives the web flasher.
   v1.54.0 logs it per pull and shows it in the Devices list and Home Assistant,
   so a frame that goes silent still shows the network it was last seen on.
   See `docs/API.md`.
+
+### Changed
+- **A failed connect no longer erases the Wi-Fi settings.** When no saved
+  network connects, the frame keeps the list and opens the setup AP and Improv.
 
 ## 2.20.0
 

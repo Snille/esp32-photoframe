@@ -274,7 +274,7 @@ The device supports two methods for WiFi provisioning:
 3. Device automatically reads credentials, saves to memory, and connects
 4. The `wifi.txt` file is automatically deleted after reading (to prevent issues with invalid credentials)
 
-**Note**: If credentials are invalid, the device will clear them and fall back to captive portal mode.
+**Note**: If no saved network connects, the device keeps its saved networks and opens the setup AP (captive portal) and Improv, so you can add a working one.
 
 #### Option 2: Captive Portal
 
@@ -290,6 +290,12 @@ The device supports two methods for WiFi provisioning:
    - **Android**: Download from the server and (sideload/install).
 2. Tap the "+" button on the home screen
 3. The app scans for PhotoFrame setup hotspots, connects automatically, and guides you through WiFi configuration
+
+#### Several networks
+
+The frame saves up to **5 Wi-Fi networks**. Every method above adds to the list instead of replacing it. Manage the list in the frame's web UI under **Saved WiFi networks** (add and remove), or with `GET/POST/DELETE /api/wifi/networks` (see [docs/API.md](docs/API.md)).
+
+On each wake the frame tries the last network that worked first, with no scan. If that fails, it scans once and tries the saved networks it can see, strongest first. The network that connects becomes the new first choice. This lets a frame move between, for example, a home and a cabin network without new setup.
 
 **Re-provision:** Delete credentials with `idf.py erase-flash` or place new `wifi.txt` on SD card after clearing stored credentials
 
