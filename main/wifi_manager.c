@@ -32,6 +32,8 @@ static bool s_credentials_saved = false;
 static int s_last_connect_ms = -1;
 static int s_last_connect_attempts = 0;
 static bool s_last_connect_scanned = false;
+// False in the setup AP: the station must not connect on STA_START by itself.
+static bool s_autoconnect = true;
 
 // Upper bound for one connect attempt. The retry counter normally ends it far
 // sooner; this only guards against a lost event.
@@ -43,7 +45,9 @@ static void event_handler(void *arg, esp_event_base_t event_base, int32_t event_
                           void *event_data)
 {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
-        esp_wifi_connect();
+        if (s_autoconnect) {
+            esp_wifi_connect();
+        }
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_CONNECTED) {
         // Bring up an IPv6 link-local address so mDNS can answer AAAA queries.
         // Without one the responder stays silent on AAAA, and clients resolving
@@ -156,6 +160,7 @@ static esp_err_t connect_one(const char *ssid, const char *password, int max_ret
 
     // Stop WiFi if it's running, then set config
     esp_wifi_stop();
+    s_autoconnect = true;
 
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
     ESP_ERROR_CHECK(esp_wifi_start());
@@ -643,6 +648,15 @@ int wifi_manager_scan(wifi_ap_record_t *results, int max_results)
     // Start blocking scan on all channels
     wifi_scan_config_t scan_config = {0};
     err = esp_wifi_scan_start(&scan_config, true);
+    if (err == ESP_ERR_WIFI_STATE) {
+        // The station is busy connecting; the driver will not scan meanwhile.
+        // Stop that attempt and its retries, then scan once more.
+        ESP_LOGW(TAG, "Scan refused while connecting - stopping the attempt and retrying");
+        s_max_retries = 0;
+        esp_wifi_disconnect();
+        vTaskDelay(pdMS_TO_TICKS(200));
+        err = esp_wifi_scan_start(&scan_config, true);
+    }
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "WiFi scan failed: %s", esp_err_to_name(err));
         if (original_mode == WIFI_MODE_AP) {
@@ -681,4 +695,69 @@ int wifi_manager_scan(wifi_ap_record_t *results, int max_results)
 
     ESP_LOGI(TAG, "WiFi scan found %d APs (returning %d)", ap_count, fetch_count);
     return (int) fetch_count;
+}
+
+void wifi_manager_enter_setup_mode(void)
+{
+    s_autoconnect = false;
+    s_max_retries = 0;
+    s_retry_num = 0;
+    esp_wifi_disconnect();
+    xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT);
+}
+
+esp_err_t wifi_manager_test_connect(const char *ssid, const char *password, int timeout_ms)
+{
+    if (!ssid || strlen(ssid) == 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    wifi_config_t sta_config = {0};
+    strncpy((char *) sta_config.sta.ssid, ssid, sizeof(sta_config.sta.ssid) - 1);
+    if (password) {
+        strncpy((char *) sta_config.sta.password, password, sizeof(sta_config.sta.password) - 1);
+    }
+    sta_config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
+    sta_config.sta.pmf_cfg.capable = true;
+    sta_config.sta.pmf_cfg.required = false;
+
+    // Keep the setup AP up while testing. STA_START must not connect on its
+    // own here: the config below is not set yet at that moment.
+    s_autoconnect = false;
+    s_max_retries = 0;
+    esp_wifi_set_mode(WIFI_MODE_APSTA);
+    esp_wifi_disconnect();
+    vTaskDelay(pdMS_TO_TICKS(100));
+
+    esp_err_t err = esp_wifi_set_config(WIFI_IF_STA, &sta_config);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Test connect: set_config failed: %s", esp_err_to_name(err));
+        return err;
+    }
+
+    // Start from a clean result: a fail left over from the boot-time attempt
+    // would otherwise answer at once, before this network was even tried.
+    s_retry_num = 0;
+    s_max_retries = 3;
+    xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT);
+
+    ESP_LOGI(TAG, "Test connect to '%s'", ssid);
+    err = esp_wifi_connect();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Test connect: esp_wifi_connect failed: %s", esp_err_to_name(err));
+        s_max_retries = 0;
+        return err;
+    }
+
+    EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
+                                           pdTRUE, pdFALSE, pdMS_TO_TICKS(timeout_ms));
+    if (bits & WIFI_CONNECTED_BIT) {
+        ESP_LOGI(TAG, "Test connect to '%s' OK", ssid);
+        return ESP_OK;
+    }
+
+    ESP_LOGW(TAG, "Test connect to '%s' %s", ssid, (bits & WIFI_FAIL_BIT) ? "failed" : "timed out");
+    s_max_retries = 0;
+    esp_wifi_disconnect();
+    return ESP_FAIL;
 }

@@ -70,5 +70,13 @@ bool wifi_manager_credentials_saved(void);
 esp_err_t wifi_manager_load_credentials_from_sdcard(char *ssid, char *password);
 EventGroupHandle_t wifi_manager_get_event_group(void);
 int wifi_manager_scan(wifi_ap_record_t *results, int max_results);
+// Setup AP mode: stop the station from reconnecting on its own. Without this,
+// switching AP -> APSTA (for a scan or a connect test) fires STA_START, which
+// reconnects to the old saved network; the radio then refuses to scan
+// ("sta is connecting") and a stale fail result answers the next connect test.
+void wifi_manager_enter_setup_mode(void);
+// Setup AP mode: test one network while the AP stays up (APSTA). Clears any
+// earlier result first, so the answer is about THIS ssid/password.
+esp_err_t wifi_manager_test_connect(const char *ssid, const char *password, int timeout_ms);
 
 #endif

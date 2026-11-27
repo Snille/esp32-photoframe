@@ -377,41 +377,11 @@ static esp_err_t provision_save_handler(httpd_req_t *req)
     ESP_LOGI(TAG, "Device name: %s", device_name);
     ESP_LOGI(TAG, "Testing WiFi connection in APSTA mode...");
 
-    // Switch to APSTA mode to test connection while keeping AP running
-    esp_wifi_set_mode(WIFI_MODE_APSTA);
-
-    // Configure STA with provided credentials
-    wifi_config_t sta_config = {0};
-    strncpy((char *) sta_config.sta.ssid, ssid, sizeof(sta_config.sta.ssid) - 1);
-    strncpy((char *) sta_config.sta.password, password, sizeof(sta_config.sta.password) - 1);
-    sta_config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
-    sta_config.sta.pmf_cfg.capable = true;
-    sta_config.sta.pmf_cfg.required = false;
-
-    esp_wifi_set_config(WIFI_IF_STA, &sta_config);
-
-    // Disconnect first if already connected
-    esp_wifi_disconnect();
-
-    // Wait a bit for disconnect to complete
-    vTaskDelay(pdMS_TO_TICKS(100));
-
-    // Try to connect
-    esp_wifi_connect();
-
-    // Wait for connection result (with timeout)
-    EventBits_t bits =
-        xEventGroupWaitBits(wifi_manager_get_event_group(), WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
-                            pdTRUE,               // Clear bits on exit
-                            pdFALSE,              // Wait for either bit
-                            pdMS_TO_TICKS(15000)  // 15 second timeout
-        );
-
-    if (!(bits & WIFI_CONNECTED_BIT)) {
+    // Test the network in APSTA mode, so the setup AP stays up meanwhile
+    if (wifi_manager_test_connect(ssid, password, 20000) != ESP_OK) {
         ESP_LOGW(TAG, "Failed to connect to WiFi network: %s", ssid);
 
         // Connection failed - switch back to AP-only mode
-        esp_wifi_disconnect();
         esp_wifi_set_mode(WIFI_MODE_AP);
 
         const char *error_response =
@@ -462,6 +432,10 @@ esp_err_t wifi_provisioning_init(void)
 esp_err_t wifi_provisioning_start_ap(void)
 {
     ESP_LOGI(TAG, "Starting WiFi AP for provisioning");
+
+    // No reconnects to an old saved network while the setup AP runs: they
+    // block every scan and leave a stale fail behind.
+    wifi_manager_enter_setup_mode();
 
     // Stop WiFi first
     esp_wifi_stop();

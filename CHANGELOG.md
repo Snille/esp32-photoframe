@@ -10,6 +10,20 @@ DFRobot FireBeetle) on **ESP-IDF v6.0** from a single `v<version>` tag; each
 release carries every board's flashable factory bin and drives the web flasher.
 (The old manual `firebeetle-v<version>` line is retired.)
 
+## 2.22.1
+
+### Fixed
+- **The setup AP works again when no saved network connects.** Since 2.22.0 a
+  frame that cannot reach any saved network opens the setup AP. On that path
+  the captive portal was broken in two ways. The scan found no networks: the
+  station kept reconnecting to the old saved network in the background, and the
+  radio refuses to scan while it connects. Saving a network failed at once,
+  whatever the password: the fail result left over from the boot-time attempt
+  answered before the new network was tried. In the setup AP the station now
+  connects only when asked, a refused scan stops the attempt and scans again,
+  and the connect test clears any old result first. Tested on a XIAO EE02:
+  scan, a wrong password (fails after a real attempt) and the right password.
+
 ## 2.22.0
 
 ### Added
